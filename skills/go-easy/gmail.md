@@ -55,6 +55,13 @@ npx go-gmail marc@blegal.eu send \
   --body="Message body" \
   --confirm
 
+# With Markdown body (converted to HTML automatically):
+npx go-gmail marc@blegal.eu send \
+  --to=recipient@example.com \
+  --subject="Weekly Update" \
+  --md="# Status\n\n- Task 1: **done**\n- Task 2: _in progress_" \
+  --confirm
+
 # With CC, BCC, HTML, attachments:
 npx go-gmail marc@blegal.eu send \
   --to=a@example.com \
@@ -120,7 +127,8 @@ For direct TypeScript import (when building tools, not using CLI):
 import { getAuth } from '@marcfargas/go-easy/auth';
 import { search, getMessage, getThread, send, reply, forward,
          createDraft, sendDraft, listDrafts, listLabels,
-         batchModifyLabels, getAttachmentContent, getProfile
+         batchModifyLabels, getAttachmentContent, getProfile,
+         markdownToHtml
 } from '@marcfargas/go-easy/gmail';
 import { setSafetyContext } from '@marcfargas/go-easy';
 
@@ -152,6 +160,16 @@ const sent = await send(auth, {
   html: '<p>Message HTML</p>',
   attachments: ['path/to/file.pdf'],
 });
+
+// Send with Markdown (auto-converted to HTML)
+await send(auth, {
+  to: 'recipient@example.com',
+  subject: 'Update',
+  markdown: '# Status\n\n- Task 1: **done**\n- Task 2: _in progress_',
+});
+
+// Convert Markdown to HTML manually
+const html = markdownToHtml('**bold** and _italic_');
 
 // Reply (DESTRUCTIVE)
 const replied = await reply(auth, {

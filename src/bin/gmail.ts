@@ -127,6 +127,7 @@ async function main() {
           subject: flags.subject ?? '',
           body: flags.body,
           html: flags.html,
+          markdown: flags.markdown ?? flags.md,
           attachments: flags.attach?.split(','),
         });
         break;
@@ -137,6 +138,7 @@ async function main() {
           subject: flags.subject ?? '',
           body: flags.body,
           html: flags.html,
+          markdown: flags.markdown ?? flags.md,
         });
         break;
 

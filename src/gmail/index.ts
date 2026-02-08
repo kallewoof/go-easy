@@ -10,6 +10,7 @@ import type { OAuth2Client } from 'google-auth-library';
 import { guardOperation } from '../safety.js';
 import { NotFoundError, QuotaError, GoEasyError } from '../errors.js';
 import { parseMessage, buildMimeMessage, buildForwardMime, base64UrlEncode, getHeader } from './helpers.js';
+import { markdownToHtml } from './markdown.js';
 import type {
   GmailMessage,
   GmailThread,
@@ -36,6 +37,25 @@ export type {
   ForwardOptions,
   BatchLabelOptions,
 };
+
+export { markdownToHtml } from './markdown.js';
+
+/**
+ * Resolve markdown field to html. If html is already set, markdown is ignored.
+ * Also sets body from markdown source if body is not provided.
+ */
+function resolveMarkdown<T extends { body?: string; html?: string; markdown?: string }>(
+  opts: T
+): T {
+  if (opts.markdown && !opts.html) {
+    return {
+      ...opts,
+      html: markdownToHtml(opts.markdown),
+      body: opts.body ?? opts.markdown, // plain text fallback = raw markdown
+    };
+  }
+  return opts;
+}
 
 /** Get a Gmail API client instance */
 function gmailApi(auth: OAuth2Client) {
@@ -181,7 +201,10 @@ export async function send(
 
   const gmail = gmailApi(auth);
   const from = await getProfile(auth);
-  const mime = await buildMimeMessage(from, opts);
+
+  // Resolve markdown → html (html takes precedence if both set)
+  const resolvedOpts = resolveMarkdown(opts);
+  const mime = await buildMimeMessage(from, resolvedOpts);
   const raw = base64UrlEncode(mime);
 
   try {
@@ -229,15 +252,16 @@ export async function reply(
       )
     : [original.from];
 
-  const sendOpts: SendOptions = {
+  const sendOpts: SendOptions = resolveMarkdown({
     to: replyTo,
     subject: original.subject.startsWith('Re:')
       ? original.subject
       : `Re: ${original.subject}`,
     body: opts.body,
     html: opts.html,
+    markdown: opts.markdown,
     attachments: opts.attachments,
-  };
+  });
 
   const extraHeaders: Record<string, string> = {
     'In-Reply-To': `<${opts.messageId}>`,
@@ -398,7 +422,8 @@ export async function createDraft(
 ): Promise<GmailDraft> {
   const gmail = gmailApi(auth);
   const from = await getProfile(auth);
-  const mime = await buildMimeMessage(from, opts);
+  const resolvedOpts = resolveMarkdown(opts);
+  const mime = await buildMimeMessage(from, resolvedOpts);
   const raw = base64UrlEncode(mime);
 
   try {

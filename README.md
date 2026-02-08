@@ -129,8 +129,9 @@ Destructive operations require `--confirm`. Without it, they show what *would* h
 | `createDraft` | WRITE | Create a draft (no send) |
 | `listDrafts` | READ | List existing drafts |
 | `batchModifyLabels` | WRITE | Add/remove labels on multiple messages |
-| `send` | ⚠️ DESTRUCTIVE | Send a new email |
-| `reply` | ⚠️ DESTRUCTIVE | Reply to a message (preserves thread) |
+| `markdownToHtml` | — | Convert Markdown to email-safe HTML |
+| `send` | ⚠️ DESTRUCTIVE | Send a new email (supports `markdown` option) |
+| `reply` | ⚠️ DESTRUCTIVE | Reply to a message (supports `markdown` option) |
 | `forward` | ⚠️ DESTRUCTIVE | Forward a message with attachments |
 | `sendDraft` | ⚠️ DESTRUCTIVE | Send an existing draft |
 

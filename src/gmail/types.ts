@@ -57,6 +57,8 @@ export interface SendOptions {
   body?: string;
   /** HTML body (if provided, creates multipart/alternative) */
   html?: string;
+  /** Markdown body — converted to HTML automatically. If `html` is also set, `html` wins. */
+  markdown?: string;
   /** File paths to attach */
   attachments?: string[];
 }
@@ -71,6 +73,8 @@ export interface ReplyOptions {
   body?: string;
   /** HTML body */
   html?: string;
+  /** Markdown body — converted to HTML automatically. If `html` is also set, `html` wins. */
+  markdown?: string;
   /** File paths to attach */
   attachments?: string[];
   /** Reply to all recipients (default: false, reply to sender only) */
