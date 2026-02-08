@@ -10,13 +10,19 @@
  *   go-gmail marc@blegal.eu get <messageId>
  *   go-gmail marc@blegal.eu thread <threadId>
  *   go-gmail marc@blegal.eu labels
- *   go-gmail marc@blegal.eu send --to=x@y.com --subject="Hi" --body="Hello"
+ *   go-gmail marc@blegal.eu send --to=x@y.com --subject="Hi" --body-text-file=body.txt --confirm
+ *
+ * Body content:
+ *   --body-text-file=<path>  Read plain text body from file (UTF-8)
+ *   --body-html-file=<path>  Read HTML body from file (UTF-8)
+ *   --body-md-file=<path>    Read Markdown body from file (auto-converted to HTML)
  *
  * Safety:
  *   Destructive operations (send, reply, forward, sendDraft) require --confirm flag.
  *   Without --confirm, the command shows what WOULD happen and exits.
  */
 
+import { readFileSync } from 'node:fs';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as gmail from '../gmail/index.js';
@@ -32,14 +38,19 @@ function usage(): never {
       get: 'go-gmail <account> get <messageId>',
       thread: 'go-gmail <account> thread <threadId>',
       labels: 'go-gmail <account> labels',
-      send: 'go-gmail <account> send --to=<addr> --subject="..." --body="..." [--html="..."] [--confirm]',
-      forward: 'go-gmail <account> forward <messageId> --to=<addr> [--body="..."] [--exclude=file1,file2] [--send-now --confirm]',
-      draft: 'go-gmail <account> draft --to=<addr> --subject="..." --body="..."',
+      send: 'go-gmail <account> send --to=<addr> --subject="..." --body-text-file=body.txt [--body-html-file=body.html] [--confirm]',
+      forward: 'go-gmail <account> forward <messageId> --to=<addr> [--body-text-file=note.txt] [--exclude=file1,file2] [--send-now --confirm]',
+      draft: 'go-gmail <account> draft --to=<addr> --subject="..." --body-text-file=body.txt [--in-reply-to=<messageId>]',
       'send-draft': 'go-gmail <account> send-draft <draftId> [--confirm]',
       drafts: 'go-gmail <account> drafts [--max=N]',
       'batch-label': 'go-gmail <account> batch-label --ids=id1,id2 --add=LABEL --remove=LABEL',
       attachment: 'go-gmail <account> attachment <messageId> <attachmentId>',
       profile: 'go-gmail <account> profile',
+    },
+    bodyFlags: {
+      '--body-text-file': 'Read plain text body from file (UTF-8)',
+      '--body-html-file': 'Read HTML body from file (UTF-8)',
+      '--body-md-file': 'Read Markdown body from file (auto-converted to HTML)',
     },
   }, null, 2));
   process.exit(1);
@@ -49,7 +60,7 @@ function usage(): never {
 function parseFlags(args: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
   for (const arg of args) {
-    const match = arg.match(/^--([^=]+)(?:=(.*))?$/);
+    const match = arg.match(/^--([^=]+)(?:=(.*))?$/s);
     if (match) {
       flags[match[1]] = match[2] ?? 'true';
     }
@@ -60,6 +71,30 @@ function parseFlags(args: string[]): Record<string, string> {
 /** Get positional args (non-flag) */
 function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
+}
+
+/**
+ * Read body content from file flags.
+ * Returns { body?, html?, markdown? } for SendOptions.
+ */
+function readBodyFlags(flags: Record<string, string>): {
+  body?: string;
+  html?: string;
+  markdown?: string;
+} {
+  const result: { body?: string; html?: string; markdown?: string } = {};
+
+  if (flags['body-text-file']) {
+    result.body = readFileSync(flags['body-text-file'], 'utf-8');
+  }
+  if (flags['body-html-file']) {
+    result.html = readFileSync(flags['body-html-file'], 'utf-8');
+  }
+  if (flags['body-md-file']) {
+    result.markdown = readFileSync(flags['body-md-file'], 'utf-8');
+  }
+
+  return result;
 }
 
 async function main() {
@@ -126,9 +161,7 @@ async function main() {
           cc: flags.cc,
           bcc: flags.bcc,
           subject: flags.subject ?? '',
-          body: flags.body,
-          html: flags.html,
-          markdown: flags.markdown ?? flags.md,
+          ...readBodyFlags(flags),
           attachments: flags.attach?.split(','),
         });
         break;
@@ -138,9 +171,7 @@ async function main() {
         result = await gmail.forward(auth, {
           messageId: pos[0],
           to: flags.to ?? '',
-          body: flags.body,
-          html: flags.html,
-          markdown: flags.markdown ?? flags.md,
+          ...readBodyFlags(flags),
           includeAttachments: flags.include ? flags.include.split(',') : true,
           excludeAttachments: flags.exclude?.split(','),
           sendNow: 'send-now' in flags,
@@ -167,9 +198,7 @@ async function main() {
         result = await gmail.createDraft(auth, {
           to: flags.to ?? '',
           subject: flags.subject ?? '',
-          body: flags.body,
-          html: flags.html,
-          markdown: flags.markdown ?? flags.md,
+          ...readBodyFlags(flags),
           threadId,
           extraHeaders,
         });

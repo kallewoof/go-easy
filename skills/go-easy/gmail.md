@@ -8,6 +8,19 @@ npx go-gmail <account> <command> [args...] [--flags]
 
 All commands output JSON to stdout. Errors output JSON to stderr with exit code 1.
 
+### Body Content Flags
+
+Body content is always read from files — never passed inline. This avoids shell escaping, encoding, and multiline issues.
+
+| Flag | Description |
+|------|-------------|
+| `--body-text-file=<path>` | Read plain text body from UTF-8 file |
+| `--body-html-file=<path>` | Read HTML body from UTF-8 file |
+| `--body-md-file=<path>` | Read Markdown body from file (auto-converted to HTML) |
+
+You can combine `--body-text-file` + `--body-html-file` for multipart/alternative emails.
+Markdown (`--body-md-file`) auto-generates HTML; if `--body-html-file` is also set, HTML wins.
+
 ### Commands
 
 #### profile
@@ -49,17 +62,18 @@ Returns: `[{ id, name, type }]`
 #### send ⚠️ DESTRUCTIVE
 Send an email. Requires `--confirm`.
 ```bash
+# Write body to a temp file, then send
 npx go-gmail marc@blegal.eu send \
   --to=recipient@example.com \
   --subject="Hello" \
-  --body="Message body" \
+  --body-text-file=body.txt \
   --confirm
 
 # With Markdown body (converted to HTML automatically):
 npx go-gmail marc@blegal.eu send \
   --to=recipient@example.com \
   --subject="Weekly Update" \
-  --md="# Status\n\n- Task 1: **done**\n- Task 2: _in progress_" \
+  --body-md-file=update.md \
   --confirm
 
 # With CC, BCC, HTML, attachments:
@@ -68,8 +82,8 @@ npx go-gmail marc@blegal.eu send \
   --cc=b@example.com \
   --bcc=c@example.com \
   --subject="Report" \
-  --body="See attached" \
-  --html="<p>See attached</p>" \
+  --body-text-file=body.txt \
+  --body-html-file=body.html \
   --attach=report.pdf,data.xlsx \
   --confirm
 ```
@@ -86,13 +100,13 @@ Create a draft (WRITE — no `--confirm` needed).
 npx go-gmail marc@blegal.eu draft \
   --to=recipient@example.com \
   --subject="Draft subject" \
-  --body="Draft body"
+  --body-text-file=body.txt
 
 # Reply draft (placed in the original thread):
 npx go-gmail marc@blegal.eu draft \
   --to=recipient@example.com \
   --subject="RE: Original subject" \
-  --body="Reply body" \
+  --body-text-file=reply.txt \
   --in-reply-to=<messageId>
 ```
 `--in-reply-to` fetches the original message to set `threadId`, `In-Reply-To`, and `References` headers.
@@ -124,8 +138,8 @@ npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --exclude
 # Include only specific attachments
 npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --include=Invoice
 
-# Add body text
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --body="FYI"
+# Add body text from file
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --body-text-file=note.txt
 
 # Don't keep in same thread
 npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --no-thread
@@ -140,7 +154,7 @@ Options:
 - `--exclude=name1,name2` — exclude attachments matching these names
 - `--include=name1,name2` — include ONLY attachments matching these names
 - `--no-thread` — don't keep in original thread
-- `--body`, `--html`, `--md` — prepend body to forwarded message
+- `--body-text-file`, `--body-html-file`, `--body-md-file` — prepend body to forwarded message
 
 #### batch-label
 Batch modify labels on messages (WRITE — no `--confirm` needed).
@@ -235,7 +249,7 @@ const fwd2 = await forward(auth, {
 });
 
 // Forward and send immediately (DESTRUCTIVE — needs safety context)
-const sent = await forward(auth, {
+const fwdSent = await forward(auth, {
   messageId: 'msg-id',
   to: 'other@example.com',
   sendNow: true,
@@ -246,6 +260,18 @@ const draft = await createDraft(auth, {
   to: 'recipient@example.com',
   subject: 'Draft',
   body: 'Content',
+});
+
+// Draft in a thread (reply draft)
+const replyDraft = await createDraft(auth, {
+  to: 'recipient@example.com',
+  subject: 'RE: Original',
+  body: 'Reply content',
+  threadId: 'thread-id',
+  extraHeaders: {
+    'In-Reply-To': '<original-message-id@mail.gmail.com>',
+    'References': '<original-message-id@mail.gmail.com>',
+  },
 });
 
 // Labels
@@ -298,6 +324,8 @@ interface GmailMessage {
   body: { text?: string; html?: string };
   labelIds: string[];
   attachments: AttachmentInfo[];
+  /** RFC 2822 Message-ID header (present when available) */
+  rfc822MessageId?: string;
 }
 
 interface AttachmentInfo {
