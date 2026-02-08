@@ -103,6 +103,36 @@ npx go-gmail marc@blegal.eu drafts
 npx go-gmail marc@blegal.eu drafts --max=5
 ```
 
+#### forward ⚠️ DESTRUCTIVE (or WRITE with --as-draft)
+Forward a message. Requires `--confirm` unless `--as-draft`.
+```bash
+# Forward and send (DESTRUCTIVE)
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --confirm
+
+# Forward as draft (WRITE — no --confirm needed)
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --as-draft
+
+# Exclude specific attachments
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --exclude=Receipt --as-draft
+
+# Include only specific attachments
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --include=Invoice --as-draft
+
+# Add body text
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --body="FYI" --as-draft
+
+# Don't keep in same thread
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --no-thread --as-draft
+```
+Returns: `{ ok: true, id, threadId? }`
+
+Options:
+- `--as-draft` — create draft instead of sending
+- `--exclude=name1,name2` — exclude attachments matching these names
+- `--include=name1,name2` — include ONLY attachments matching these names
+- `--no-thread` — don't keep in original thread
+- `--body`, `--html`, `--md` — prepend body to forwarded message
+
 #### batch-label
 Batch modify labels on messages (WRITE — no `--confirm` needed).
 ```bash
@@ -179,12 +209,22 @@ const replied = await reply(auth, {
   replyAll: false,
 });
 
-// Forward (DESTRUCTIVE)
+// Forward as draft (WRITE — no safety gate)
 const forwarded = await forward(auth, {
   messageId: 'msg-id',
   to: 'other@example.com',
   body: 'FYI',
-  includeAttachments: true,
+  asDraft: true,                          // create draft, don't send
+  keepInThread: true,                     // stays in same thread (default)
+  excludeAttachments: ['Receipt'],        // exclude by filename match
+});
+
+// Forward and send (DESTRUCTIVE — needs safety context)
+const sent = await forward(auth, {
+  messageId: 'msg-id',
+  to: 'other@example.com',
+  markdown: '**Please review** the attached invoice.',
+  includeAttachments: ['Invoice'],        // include only matching filenames
 });
 
 // Draft (WRITE — no safety gate)

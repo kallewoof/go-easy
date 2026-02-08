@@ -87,10 +87,20 @@ export interface ForwardOptions {
   messageId: string;
   /** Recipients */
   to: string | string[];
-  /** Optional body prepended to the forwarded message */
+  /** Optional plain text body prepended to the forwarded message */
   body?: string;
-  /** Include original attachments (default: true) */
-  includeAttachments?: boolean;
+  /** Optional HTML body */
+  html?: string;
+  /** Markdown body — converted to HTML automatically */
+  markdown?: string;
+  /** Include original attachments (default: true). Set to false to exclude all, or provide an array of filenames to include only those. */
+  includeAttachments?: boolean | string[];
+  /** Attachment filenames to exclude (e.g. ['Receipt-2965-4294.pdf']). Applied after includeAttachments. */
+  excludeAttachments?: string[];
+  /** Keep the forward in the same thread (default: true) */
+  keepInThread?: boolean;
+  /** Create as draft instead of sending (default: false) */
+  asDraft?: boolean;
 }
 
 /** Options for listing/searching */

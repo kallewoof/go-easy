@@ -293,10 +293,12 @@ export async function reply(
 /**
  * Forward a message to new recipients.
  *
- * Fetches the original message, quotes its body, re-attaches original
- * attachments (unless `includeAttachments: false`), and sends.
+ * Fetches the original message, quotes its body, and re-attaches attachments.
+ * Supports creating as draft (`asDraft: true`), keeping in thread, filtering
+ * attachments by include/exclude lists, and markdown bodies.
  *
- * ⚠️ DESTRUCTIVE — requires safety confirmation.
+ * When `asDraft: true`, this is a WRITE operation (no safety gate).
+ * Otherwise ⚠️ DESTRUCTIVE — requires safety confirmation.
  */
 export async function forward(
   auth: OAuth2Client,
@@ -304,12 +306,14 @@ export async function forward(
 ): Promise<WriteResult> {
   const to = Array.isArray(opts.to) ? opts.to.join(', ') : opts.to;
 
-  await guardOperation({
-    name: 'gmail.forward',
-    level: 'DESTRUCTIVE',
-    description: `Forward message ${opts.messageId} to ${to}`,
-    details: { messageId: opts.messageId, to: opts.to },
-  });
+  if (!opts.asDraft) {
+    await guardOperation({
+      name: 'gmail.forward',
+      level: 'DESTRUCTIVE',
+      description: `Forward message ${opts.messageId} to ${to}`,
+      details: { messageId: opts.messageId, to: opts.to },
+    });
+  }
 
   const gmail = gmailApi(auth);
   const from = await getProfile(auth);
@@ -317,10 +321,20 @@ export async function forward(
   // Fetch original message
   const original = await getMessage(auth, opts.messageId);
 
-  // Fetch original attachments as Buffers
+  // Resolve which attachments to include
   const bufferAttachments: BufferAttachment[] = [];
   if (opts.includeAttachments !== false && original.attachments.length > 0) {
+    const includeList = Array.isArray(opts.includeAttachments)
+      ? opts.includeAttachments
+      : undefined;
+    const excludeList = opts.excludeAttachments ?? [];
+
     for (const att of original.attachments) {
+      // If include list provided, only include matching filenames
+      if (includeList && !includeList.some((f) => att.filename.includes(f))) continue;
+      // Exclude matching filenames
+      if (excludeList.some((f) => att.filename.includes(f))) continue;
+
       const data = await getAttachmentContent(auth, opts.messageId, att.id);
       bufferAttachments.push({
         filename: att.filename,
@@ -334,20 +348,51 @@ export async function forward(
     ? original.subject
     : `Fwd: ${original.subject}`;
 
+  // Resolve markdown → html
+  const resolved = resolveMarkdown(opts);
+  const keepInThread = opts.keepInThread !== false; // default true
+
   const mime = await buildForwardMime(
     from,
     to,
     subject,
-    opts.body,
+    resolved.body,
     original.body,
-    bufferAttachments
+    bufferAttachments,
+    undefined,
+    resolved.html
   );
   const raw = base64UrlEncode(mime);
+
+  if (opts.asDraft) {
+    try {
+      const res = await gmail.users.drafts.create({
+        userId: 'me',
+        requestBody: {
+          message: {
+            raw,
+            threadId: keepInThread ? original.threadId : undefined,
+          },
+        },
+      });
+
+      return {
+        ok: true,
+        id: res.data.id ?? '',
+        threadId: original.threadId,
+      };
+    } catch (err) {
+      handleApiError(err, 'forward (draft)');
+    }
+  }
 
   try {
     const res = await gmail.users.messages.send({
       userId: 'me',
-      requestBody: { raw },
+      requestBody: {
+        raw,
+        threadId: keepInThread ? original.threadId : undefined,
+      },
     });
 
     return {

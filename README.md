@@ -132,7 +132,7 @@ Destructive operations require `--confirm`. Without it, they show what *would* h
 | `markdownToHtml` | — | Convert Markdown to email-safe HTML |
 | `send` | ⚠️ DESTRUCTIVE | Send a new email (supports `markdown` option) |
 | `reply` | ⚠️ DESTRUCTIVE | Reply to a message (supports `markdown` option) |
-| `forward` | ⚠️ DESTRUCTIVE | Forward a message with attachments |
+| `forward` | ⚠️ DESTRUCTIVE / WRITE | Forward a message (supports `asDraft`, attachment filtering, `markdown`) |
 | `sendDraft` | ⚠️ DESTRUCTIVE | Send an existing draft |
 
 ### Drive

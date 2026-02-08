@@ -236,7 +236,8 @@ export async function buildForwardMime(
   userBody: string | undefined,
   originalBody: { text?: string; html?: string },
   bufferAttachments: BufferAttachment[],
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
+  userHtml?: string
 ): Promise<string> {
   const boundary = `go-easy-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const hasAttachments = bufferAttachments.length > 0;
@@ -249,13 +250,25 @@ export async function buildForwardMime(
   ].join('\r\n');
 
   // Build forwarded HTML body
+  const userHtmlBlock = userHtml
+    ? userHtml
+    : userBody
+      ? `<p>${escapeHtml(userBody)}</p>`
+      : undefined;
+
   const forwardedHtml = originalBody.html
     ? [
-        ...(userBody ? [`<p>${escapeHtml(userBody)}</p>`] : []),
+        ...(userHtmlBlock ? [userHtmlBlock] : []),
         '<hr><b>---------- Forwarded message ----------</b><br>',
         originalBody.html,
       ].join('\r\n')
-    : undefined;
+    : userHtmlBlock
+      ? [
+          userHtmlBlock,
+          '<hr><b>---------- Forwarded message ----------</b><br>',
+          `<pre>${escapeHtml(originalBody.text ?? '')}</pre>`,
+        ].join('\r\n')
+      : undefined;
 
   let headers = [
     `From: ${from}`,

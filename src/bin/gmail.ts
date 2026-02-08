@@ -33,6 +33,7 @@ function usage(): never {
       thread: 'go-gmail <account> thread <threadId>',
       labels: 'go-gmail <account> labels',
       send: 'go-gmail <account> send --to=<addr> --subject="..." --body="..." [--html="..."] [--confirm]',
+      forward: 'go-gmail <account> forward <messageId> --to=<addr> [--body="..."] [--exclude=file1,file2] [--as-draft] [--confirm]',
       draft: 'go-gmail <account> draft --to=<addr> --subject="..." --body="..."',
       'send-draft': 'go-gmail <account> send-draft <draftId> [--confirm]',
       drafts: 'go-gmail <account> drafts [--max=N]',
@@ -129,6 +130,21 @@ async function main() {
           html: flags.html,
           markdown: flags.markdown ?? flags.md,
           attachments: flags.attach?.split(','),
+        });
+        break;
+
+      case 'forward':
+        if (!pos[0]) usage();
+        result = await gmail.forward(auth, {
+          messageId: pos[0],
+          to: flags.to ?? '',
+          body: flags.body,
+          html: flags.html,
+          markdown: flags.markdown ?? flags.md,
+          includeAttachments: flags.include ? flags.include.split(',') : true,
+          excludeAttachments: flags.exclude?.split(','),
+          asDraft: 'as-draft' in flags,
+          keepInThread: !('no-thread' in flags),
         });
         break;
 
