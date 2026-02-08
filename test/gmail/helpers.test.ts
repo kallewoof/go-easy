@@ -484,6 +484,33 @@ describe('buildForwardMime', () => {
     expect(mime).toContain('filename="b.png"');
   });
 
+  it('RFC 2047 encodes non-ASCII subject in forward', async () => {
+    const mime = await buildForwardMime(
+      'me@test.com',
+      'you@test.com',
+      'Fwd: Factura nº 42 — información',
+      'FYI',
+      { text: 'Original' },
+      []
+    );
+
+    expect(mime).not.toContain('Subject: Fwd: Factura nº');
+    expect(mime).toMatch(/Subject: =\?UTF-8\?B\?.+\?=/);
+  });
+
+  it('leaves ASCII subject unencoded in forward', async () => {
+    const mime = await buildForwardMime(
+      'me@test.com',
+      'you@test.com',
+      'Fwd: Invoice #42',
+      'FYI',
+      { text: 'Original' },
+      []
+    );
+
+    expect(mime).toContain('Subject: Fwd: Invoice #42');
+  });
+
   it('builds forward without user body', async () => {
     const mime = await buildForwardMime(
       'me@test.com',

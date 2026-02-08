@@ -286,6 +286,45 @@ describe('reply', () => {
       })
     );
   });
+
+  it('uses RFC 2822 Message-ID for In-Reply-To when available', async () => {
+    const payloadWithMessageId = {
+      ...fakeMessagePayload,
+      headers: [
+        ...fakeMessagePayload.headers,
+        { name: 'Message-ID', value: '<CAxxxxxx@mail.gmail.com>' },
+      ],
+    };
+    mockMessagesGet.mockResolvedValue({
+      data: { ...fakeRawMessage, payload: payloadWithMessageId },
+    });
+
+    await reply(fakeAuth, {
+      threadId: 'thread-1',
+      messageId: 'msg-1',
+      body: 'Thanks',
+    });
+
+    const sendCall = mockMessagesSend.mock.calls[0][0];
+    const raw = sendCall.requestBody.raw;
+    const decoded = Buffer.from(raw, 'base64url').toString('utf-8');
+    expect(decoded).toContain('In-Reply-To: <CAxxxxxx@mail.gmail.com>');
+    expect(decoded).toContain('References: <CAxxxxxx@mail.gmail.com>');
+  });
+
+  it('falls back to Gmail message ID for In-Reply-To when no Message-ID header', async () => {
+    // Default fixture has no Message-ID header
+    await reply(fakeAuth, {
+      threadId: 'thread-1',
+      messageId: 'msg-1',
+      body: 'Thanks',
+    });
+
+    const sendCall = mockMessagesSend.mock.calls[0][0];
+    const raw = sendCall.requestBody.raw;
+    const decoded = Buffer.from(raw, 'base64url').toString('utf-8');
+    expect(decoded).toContain('In-Reply-To: <msg-1>');
+  });
 });
 
 describe('forward', () => {
@@ -519,6 +558,55 @@ describe('createDraft', () => {
 
     expect(draft.id).toBe('draft-1');
     expect(draft.message.id).toBe('msg-1');
+  });
+
+  it('passes threadId to API when provided', async () => {
+    await createDraft(fakeAuth, {
+      to: 'test@example.com',
+      subject: 'RE: Thread',
+      body: 'Reply',
+      threadId: 'thread-42',
+    });
+
+    expect(mockDraftsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: expect.objectContaining({
+          message: expect.objectContaining({
+            threadId: 'thread-42',
+          }),
+        }),
+      })
+    );
+  });
+
+  it('does not set threadId when not provided', async () => {
+    await createDraft(fakeAuth, {
+      to: 'test@example.com',
+      subject: 'New',
+      body: 'Content',
+    });
+
+    const call = mockDraftsCreate.mock.calls[0][0];
+    expect(call.requestBody.message.threadId).toBeUndefined();
+  });
+
+  it('includes extraHeaders (In-Reply-To, References) in MIME', async () => {
+    await createDraft(fakeAuth, {
+      to: 'test@example.com',
+      subject: 'RE: Thread',
+      body: 'Reply',
+      threadId: 'thread-42',
+      extraHeaders: {
+        'In-Reply-To': '<CAxxxxxx@mail.gmail.com>',
+        'References': '<CAxxxxxx@mail.gmail.com>',
+      },
+    });
+
+    const call = mockDraftsCreate.mock.calls[0][0];
+    const raw = call.requestBody.message.raw;
+    const decoded = Buffer.from(raw, 'base64url').toString('utf-8');
+    expect(decoded).toContain('In-Reply-To: <CAxxxxxx@mail.gmail.com>');
+    expect(decoded).toContain('References: <CAxxxxxx@mail.gmail.com>');
   });
 });
 
