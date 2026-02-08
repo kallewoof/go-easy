@@ -1,0 +1,10 @@
+src/
+test/
+.changeset/
+.github/
+.pi/
+skills/
+experiments/
+tsconfig.json
+vitest.config.ts
+*.test.ts
