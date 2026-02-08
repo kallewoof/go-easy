@@ -103,31 +103,31 @@ npx go-gmail marc@blegal.eu drafts
 npx go-gmail marc@blegal.eu drafts --max=5
 ```
 
-#### forward ⚠️ DESTRUCTIVE (or WRITE with --as-draft)
-Forward a message. Requires `--confirm` unless `--as-draft`.
+#### forward (WRITE — creates draft by default)
+Forward a message. Creates a draft by default. Use `--send-now --confirm` to send immediately.
 ```bash
-# Forward and send (DESTRUCTIVE)
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --confirm
-
-# Forward as draft (WRITE — no --confirm needed)
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --as-draft
+# Forward as draft (default — no --confirm needed)
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com
 
 # Exclude specific attachments
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --exclude=Receipt --as-draft
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --exclude=Receipt
 
 # Include only specific attachments
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --include=Invoice --as-draft
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --include=Invoice
 
 # Add body text
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --body="FYI" --as-draft
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --body="FYI"
 
 # Don't keep in same thread
-npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --no-thread --as-draft
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --no-thread
+
+# Send immediately (DESTRUCTIVE — requires --confirm)
+npx go-gmail marc@blegal.eu forward <messageId> --to=other@example.com --send-now --confirm
 ```
 Returns: `{ ok: true, id, threadId? }`
 
 Options:
-- `--as-draft` — create draft instead of sending
+- `--send-now` — send immediately instead of creating draft (requires `--confirm`)
 - `--exclude=name1,name2` — exclude attachments matching these names
 - `--include=name1,name2` — include ONLY attachments matching these names
 - `--no-thread` — don't keep in original thread
@@ -209,22 +209,27 @@ const replied = await reply(auth, {
   replyAll: false,
 });
 
-// Forward as draft (WRITE — no safety gate)
+// Forward as draft (default — WRITE, no safety gate)
 const forwarded = await forward(auth, {
   messageId: 'msg-id',
   to: 'other@example.com',
   body: 'FYI',
-  asDraft: true,                          // create draft, don't send
-  keepInThread: true,                     // stays in same thread (default)
   excludeAttachments: ['Receipt'],        // exclude by filename match
 });
 
-// Forward and send (DESTRUCTIVE — needs safety context)
-const sent = await forward(auth, {
+// Forward with markdown and selective attachments
+const fwd2 = await forward(auth, {
   messageId: 'msg-id',
   to: 'other@example.com',
   markdown: '**Please review** the attached invoice.',
   includeAttachments: ['Invoice'],        // include only matching filenames
+});
+
+// Forward and send immediately (DESTRUCTIVE — needs safety context)
+const sent = await forward(auth, {
+  messageId: 'msg-id',
+  to: 'other@example.com',
+  sendNow: true,
 });
 
 // Draft (WRITE — no safety gate)

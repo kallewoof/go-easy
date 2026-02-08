@@ -294,11 +294,11 @@ export async function reply(
  * Forward a message to new recipients.
  *
  * Fetches the original message, quotes its body, and re-attaches attachments.
- * Supports creating as draft (`asDraft: true`), keeping in thread, filtering
- * attachments by include/exclude lists, and markdown bodies.
+ * By default creates a **draft** (WRITE, no safety gate). Use `sendNow: true`
+ * to send immediately (⚠️ DESTRUCTIVE — requires safety confirmation).
  *
- * When `asDraft: true`, this is a WRITE operation (no safety gate).
- * Otherwise ⚠️ DESTRUCTIVE — requires safety confirmation.
+ * Supports keeping in thread, filtering attachments by include/exclude
+ * lists, and markdown/html bodies.
  */
 export async function forward(
   auth: OAuth2Client,
@@ -306,7 +306,7 @@ export async function forward(
 ): Promise<WriteResult> {
   const to = Array.isArray(opts.to) ? opts.to.join(', ') : opts.to;
 
-  if (!opts.asDraft) {
+  if (opts.sendNow) {
     await guardOperation({
       name: 'gmail.forward',
       level: 'DESTRUCTIVE',
@@ -364,7 +364,7 @@ export async function forward(
   );
   const raw = base64UrlEncode(mime);
 
-  if (opts.asDraft) {
+  if (!opts.sendNow) {
     try {
       const res = await gmail.users.drafts.create({
         userId: 'me',

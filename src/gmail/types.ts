@@ -99,8 +99,8 @@ export interface ForwardOptions {
   excludeAttachments?: string[];
   /** Keep the forward in the same thread (default: true) */
   keepInThread?: boolean;
-  /** Create as draft instead of sending (default: false) */
-  asDraft?: boolean;
+  /** Send immediately instead of creating a draft (default: false — creates draft) */
+  sendNow?: boolean;
 }
 
 /** Options for listing/searching */

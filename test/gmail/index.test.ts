@@ -299,10 +299,28 @@ describe('forward', () => {
     });
   });
 
-  it('guards as DESTRUCTIVE', async () => {
+  it('creates draft by default (no safety guard)', async () => {
+    mockDraftsCreate.mockResolvedValue({
+      data: { id: 'draft-fwd-1', message: {} },
+    });
+
+    const result = await forward(fakeAuth, {
+      messageId: 'msg-1',
+      to: 'other@example.com',
+    });
+
+    expect(mockGuardOperation).not.toHaveBeenCalled();
+    expect(mockDraftsCreate).toHaveBeenCalled();
+    expect(mockMessagesSend).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.id).toBe('draft-fwd-1');
+  });
+
+  it('guards as DESTRUCTIVE when sendNow', async () => {
     await forward(fakeAuth, {
       messageId: 'msg-1',
       to: 'other@example.com',
+      sendNow: true,
     });
 
     expect(mockGuardOperation).toHaveBeenCalledWith(
@@ -311,9 +329,14 @@ describe('forward', () => {
         level: 'DESTRUCTIVE',
       })
     );
+    expect(mockMessagesSend).toHaveBeenCalled();
   });
 
   it('fetches original message', async () => {
+    mockDraftsCreate.mockResolvedValue({
+      data: { id: 'draft-fwd-1', message: {} },
+    });
+
     await forward(fakeAuth, {
       messageId: 'msg-1',
       to: 'other@example.com',
@@ -324,11 +347,12 @@ describe('forward', () => {
     );
   });
 
-  it('sends forwarded message and returns WriteResult', async () => {
+  it('sends forwarded message when sendNow and returns WriteResult', async () => {
     const result = await forward(fakeAuth, {
       messageId: 'msg-1',
       to: 'other@example.com',
       body: 'FYI',
+      sendNow: true,
     });
 
     expect(result.ok).toBe(true);
@@ -337,6 +361,9 @@ describe('forward', () => {
   });
 
   it('fetches attachments when original has them', async () => {
+    mockDraftsCreate.mockResolvedValue({
+      data: { id: 'draft-fwd-1', message: {} },
+    });
     const payloadWithAttachment = {
       ...fakeMessagePayload,
       mimeType: 'multipart/mixed',
@@ -366,6 +393,9 @@ describe('forward', () => {
   });
 
   it('skips attachments when includeAttachments is false', async () => {
+    mockDraftsCreate.mockResolvedValue({
+      data: { id: 'draft-fwd-1', message: {} },
+    });
     const payloadWithAttachment = {
       ...fakeMessagePayload,
       mimeType: 'multipart/mixed',
@@ -392,6 +422,9 @@ describe('forward', () => {
   });
 
   it('prefixes subject with Fwd: if not already', async () => {
+    mockDraftsCreate.mockResolvedValue({
+      data: { id: 'draft-fwd-1', message: {} },
+    });
     mockMessagesGet.mockResolvedValue({
       data: fakeRawMessage,
     });
@@ -401,9 +434,9 @@ describe('forward', () => {
       to: 'other@example.com',
     });
 
-    // Verify the MIME was sent with Fwd: prefix
-    const sendCall = mockMessagesSend.mock.calls[0][0];
-    const raw = sendCall.requestBody.raw;
+    // Verify the MIME in the draft has Fwd: prefix
+    const createCall = mockDraftsCreate.mock.calls[0][0];
+    const raw = createCall.requestBody.message.raw;
     const decoded = Buffer.from(raw, 'base64url').toString('utf-8');
     expect(decoded).toContain('Subject: Fwd: Test Email');
   });
