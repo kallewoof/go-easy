@@ -101,10 +101,25 @@ export function base64UrlEncode(data: string | Buffer): string {
 }
 
 /**
+ * RFC 2047 encode a header value if it contains non-ASCII characters.
+ * Uses Base64 encoding: =?UTF-8?B?<base64>?=
+ *
+ * Returns the value unchanged if it's pure ASCII.
+ */
+export function rfc2047Encode(value: string): string {
+  // Check if all characters are printable ASCII (0x20-0x7E)
+  if (/^[\x20-\x7E]*$/.test(value)) return value;
+  const encoded = Buffer.from(value, 'utf-8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
+/**
  * Parse a raw Gmail API message into our GmailMessage shape.
  */
 export function parseMessage(raw: gmail_v1.Schema$Message): GmailMessage {
   const headers = raw.payload?.headers;
+
+  const rfc822MessageId = getHeader(headers, 'Message-ID') || undefined;
 
   return {
     id: raw.id ?? '',
@@ -119,6 +134,7 @@ export function parseMessage(raw: gmail_v1.Schema$Message): GmailMessage {
     body: extractBody(raw.payload),
     labelIds: raw.labelIds ?? [],
     attachments: extractAttachments(raw.payload),
+    ...(rfc822MessageId ? { rfc822MessageId } : {}),
   };
 }
 
@@ -152,7 +168,7 @@ export async function buildMimeMessage(
     `To: ${to}`,
     ...(cc ? [`Cc: ${cc}`] : []),
     ...(bcc ? [`Bcc: ${bcc}`] : []),
-    `Subject: ${opts.subject}`,
+    `Subject: ${rfc2047Encode(opts.subject)}`,
     'MIME-Version: 1.0',
   ];
 
@@ -273,7 +289,7 @@ export async function buildForwardMime(
   let headers = [
     `From: ${from}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${rfc2047Encode(subject)}`,
     'MIME-Version: 1.0',
   ];
 

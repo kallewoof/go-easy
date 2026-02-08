@@ -87,7 +87,16 @@ npx go-gmail marc@blegal.eu draft \
   --to=recipient@example.com \
   --subject="Draft subject" \
   --body="Draft body"
+
+# Reply draft (placed in the original thread):
+npx go-gmail marc@blegal.eu draft \
+  --to=recipient@example.com \
+  --subject="RE: Original subject" \
+  --body="Reply body" \
+  --in-reply-to=<messageId>
 ```
+`--in-reply-to` fetches the original message to set `threadId`, `In-Reply-To`, and `References` headers.
+
 Returns: `{ id, message: GmailMessage }`
 
 #### send-draft ⚠️ DESTRUCTIVE

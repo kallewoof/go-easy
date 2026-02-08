@@ -263,9 +263,11 @@ export async function reply(
     attachments: opts.attachments,
   });
 
+  // Use the proper RFC 2822 Message-ID header if available, fall back to Gmail internal ID
+  const messageIdRef = original.rfc822MessageId ?? `<${opts.messageId}>`;
   const extraHeaders: Record<string, string> = {
-    'In-Reply-To': `<${opts.messageId}>`,
-    References: `<${opts.messageId}>`,
+    'In-Reply-To': messageIdRef,
+    References: messageIdRef,
   };
 
   const mime = await buildMimeMessage(from, sendOpts, extraHeaders);
@@ -460,22 +462,28 @@ export async function listLabels(
  * Create a draft.
  *
  * WRITE operation (reversible), no safety gate.
+ *
+ * @param opts.threadId - Optional thread ID to place the draft in an existing thread
+ * @param opts.extraHeaders - Optional extra MIME headers (e.g. In-Reply-To, References)
  */
 export async function createDraft(
   auth: OAuth2Client,
-  opts: SendOptions
+  opts: SendOptions & { threadId?: string; extraHeaders?: Record<string, string> }
 ): Promise<GmailDraft> {
   const gmail = gmailApi(auth);
   const from = await getProfile(auth);
   const resolvedOpts = resolveMarkdown(opts);
-  const mime = await buildMimeMessage(from, resolvedOpts);
+  const mime = await buildMimeMessage(from, resolvedOpts, opts.extraHeaders);
   const raw = base64UrlEncode(mime);
 
   try {
     const res = await gmail.users.drafts.create({
       userId: 'me',
       requestBody: {
-        message: { raw },
+        message: {
+          raw,
+          threadId: opts.threadId,
+        },
       },
     });
 

@@ -24,6 +24,8 @@ export interface GmailMessage {
   labelIds: string[];
   /** Attachment metadata (not downloaded by default) */
   attachments: AttachmentInfo[];
+  /** RFC 2822 Message-ID header (e.g. "<CAxxxxxxxxxx@mail.gmail.com>"). Present when available. */
+  rfc822MessageId?: string;
 }
 
 /** A thread (conversation) */

@@ -148,15 +148,33 @@ async function main() {
         });
         break;
 
-      case 'draft':
+      case 'draft': {
+        let threadId: string | undefined;
+        let extraHeaders: Record<string, string> | undefined;
+
+        // If --in-reply-to is provided, fetch the original message to get threadId and Message-ID
+        const inReplyToId = flags['in-reply-to'];
+        if (inReplyToId) {
+          const original = await gmail.getMessage(auth, inReplyToId);
+          threadId = original.threadId;
+          const messageIdRef = original.rfc822MessageId ?? `<${inReplyToId}>`;
+          extraHeaders = {
+            'In-Reply-To': messageIdRef,
+            'References': messageIdRef,
+          };
+        }
+
         result = await gmail.createDraft(auth, {
           to: flags.to ?? '',
           subject: flags.subject ?? '',
           body: flags.body,
           html: flags.html,
           markdown: flags.markdown ?? flags.md,
+          threadId,
+          extraHeaders,
         });
         break;
+      }
 
       case 'send-draft':
         if (!pos[0]) usage();

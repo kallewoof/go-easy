@@ -7,6 +7,7 @@ import {
   extractBody,
   base64Decode,
   base64UrlEncode,
+  rfc2047Encode,
   parseMessage,
   buildMimeMessage,
   buildForwardMime,
@@ -240,6 +241,33 @@ describe('parseMessage', () => {
     expect(msg.attachments[0].filename).toBe('invoice.pdf');
   });
 
+  it('extracts rfc822MessageId when Message-ID header is present', () => {
+    const msg = parseMessage({
+      id: 'msg-999',
+      threadId: 'thread-999',
+      payload: {
+        headers: [
+          { name: 'From', value: 'sender@example.com' },
+          { name: 'Message-ID', value: '<CAxxxxxx@mail.gmail.com>' },
+        ],
+      },
+    });
+    expect(msg.rfc822MessageId).toBe('<CAxxxxxx@mail.gmail.com>');
+  });
+
+  it('omits rfc822MessageId when Message-ID header is absent', () => {
+    const msg = parseMessage({
+      id: 'msg-999',
+      threadId: 'thread-999',
+      payload: {
+        headers: [
+          { name: 'From', value: 'sender@example.com' },
+        ],
+      },
+    });
+    expect(msg.rfc822MessageId).toBeUndefined();
+  });
+
   it('handles message with missing fields', () => {
     const msg = parseMessage({});
     expect(msg.id).toBe('');
@@ -251,6 +279,29 @@ describe('parseMessage', () => {
     expect(msg.body).toEqual({});
     expect(msg.labelIds).toEqual([]);
     expect(msg.attachments).toEqual([]);
+  });
+});
+
+describe('rfc2047Encode', () => {
+  it('returns ASCII strings unchanged', () => {
+    expect(rfc2047Encode('Hello World')).toBe('Hello World');
+    expect(rfc2047Encode('RE: Invoice #1234')).toBe('RE: Invoice #1234');
+  });
+
+  it('encodes non-ASCII characters using RFC 2047 Base64', () => {
+    const encoded = rfc2047Encode('RE: Solicitud NIF-N para inversión en España');
+    expect(encoded).toMatch(/^=\?UTF-8\?B\?.+\?=$/);
+    // Decode the base64 part to verify round-trip
+    const base64Part = encoded.replace('=?UTF-8?B?', '').replace('?=', '');
+    const decoded = Buffer.from(base64Part, 'base64').toString('utf-8');
+    expect(decoded).toBe('RE: Solicitud NIF-N para inversión en España');
+  });
+
+  it('encodes Japanese characters', () => {
+    const encoded = rfc2047Encode('テスト件名');
+    expect(encoded).toMatch(/^=\?UTF-8\?B\?.+\?=$/);
+    const base64Part = encoded.replace('=?UTF-8?B?', '').replace('?=', '');
+    expect(Buffer.from(base64Part, 'base64').toString('utf-8')).toBe('テスト件名');
   });
 });
 
@@ -328,6 +379,31 @@ describe('buildMimeMessage', () => {
     });
 
     expect(mime).toContain('MIME-Version: 1.0');
+  });
+
+  it('RFC 2047 encodes non-ASCII subject', async () => {
+    const mime = await buildMimeMessage('me@test.com', {
+      to: 'you@test.com',
+      subject: 'RE: Solicitud NIF-N para inversión en España',
+      body: 'Hola',
+    });
+
+    // Should NOT contain raw UTF-8 in Subject header
+    expect(mime).not.toContain('Subject: RE: Solicitud NIF-N para inversión');
+    // Should contain RFC 2047 encoded subject
+    expect(mime).toMatch(/Subject: =\?UTF-8\?B\?.+\?=/);
+    // Body can contain raw UTF-8 (it's in a charset=utf-8 content part)
+    expect(mime).toContain('Hola');
+  });
+
+  it('leaves ASCII subject unencoded', async () => {
+    const mime = await buildMimeMessage('me@test.com', {
+      to: 'you@test.com',
+      subject: 'RE: Invoice #1234',
+      body: 'Thanks',
+    });
+
+    expect(mime).toContain('Subject: RE: Invoice #1234');
   });
 });
 
