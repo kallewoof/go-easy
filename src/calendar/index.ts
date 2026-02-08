@@ -18,6 +18,11 @@ import type {
   WriteResult,
   ListEventsOptions,
   EventOptions,
+  EventType,
+  WorkingLocationProperties,
+  OutOfOfficeProperties,
+  FocusTimeProperties,
+  BirthdayProperties,
 } from './types.js';
 
 export type {
@@ -28,6 +33,11 @@ export type {
   WriteResult,
   ListEventsOptions,
   EventOptions,
+  EventType,
+  WorkingLocationProperties,
+  OutOfOfficeProperties,
+  FocusTimeProperties,
+  BirthdayProperties,
 };
 export type { Attendee, FreeBusySlot } from './types.js';
 
@@ -88,6 +98,12 @@ export async function listEvents(
 
   const singleEvents = opts.singleEvents ?? true;
 
+  // Default to all event types so working location, OOO, focus time, birthdays are included.
+  // The Google Calendar API excludes workingLocation and birthday by default!
+  const eventTypes = opts.eventTypes ?? [
+    'default', 'outOfOffice', 'workingLocation', 'focusTime', 'birthday',
+  ];
+
   try {
     const res = await cal.events.list({
       calendarId,
@@ -98,6 +114,7 @@ export async function listEvents(
       q: opts.query,
       singleEvents,
       orderBy: opts.orderBy ?? (singleEvents ? 'startTime' : undefined),
+      eventTypes,
     });
 
     return {

@@ -20,9 +20,10 @@ Returns: `[{ id, summary, description?, primary?, timeZone?, backgroundColor? }]
 Use `primary` as calendarId for the main calendar in other commands.
 
 #### events
-List events on a calendar.
+List events on a calendar. By default returns ALL event types (regular, out-of-office,
+working location, focus time, birthdays).
 ```bash
-# Upcoming events
+# Upcoming events (all types)
 npx go-calendar marc@blegal.eu events primary
 
 # Date range
@@ -33,10 +34,16 @@ npx go-calendar marc@blegal.eu events primary \
 # With text search
 npx go-calendar marc@blegal.eu events primary --query="meeting" --max=10
 
+# Filter by event type
+npx go-calendar marc@blegal.eu events primary --event-types=workingLocation
+npx go-calendar marc@blegal.eu events primary --event-types=default,outOfOffice
+
 # On a specific calendar
 npx go-calendar marc@blegal.eu events <calendarId> --from=2026-02-10T00:00:00Z
 ```
 Returns: `{ items: CalendarEvent[], nextPageToken? }`
+
+**Event types**: `default`, `outOfOffice`, `workingLocation`, `focusTime`, `birthday`
 
 #### event
 Get a single event by ID.
@@ -46,9 +53,9 @@ npx go-calendar marc@blegal.eu event <calendarId> <eventId>
 Returns: `CalendarEvent`
 
 #### create (WRITE)
-Create a new event.
+Create a new event. Supports all writable event types.
 ```bash
-# Timed event
+# Regular timed event
 npx go-calendar marc@blegal.eu create primary \
   --summary="Team Meeting" \
   --start=2026-02-10T10:00:00+01:00 \
@@ -70,6 +77,46 @@ npx go-calendar marc@blegal.eu create primary \
   --start=2026-02-12T14:00:00+01:00 \
   --end=2026-02-12T15:00:00+01:00 \
   --attendees=alice@example.com,bob@example.com
+
+# Working location — home office
+npx go-calendar marc@blegal.eu create primary \
+  --type=workingLocation \
+  --summary="Home" \
+  --start=2026-02-10 --end=2026-02-11 --all-day \
+  --wl-type=homeOffice
+
+# Working location — office
+npx go-calendar marc@blegal.eu create primary \
+  --type=workingLocation \
+  --summary="Barcelona" \
+  --start=2026-02-10 --end=2026-02-11 --all-day \
+  --wl-type=officeLocation --wl-label="Barcelona Office"
+
+# Working location — custom
+npx go-calendar marc@blegal.eu create primary \
+  --type=workingLocation \
+  --summary="Coworking" \
+  --start=2026-02-10 --end=2026-02-11 --all-day \
+  --wl-type=customLocation --wl-label="WeWork Diagonal"
+
+# Out of office
+npx go-calendar marc@blegal.eu create primary \
+  --type=outOfOffice \
+  --summary="Vacation" \
+  --start=2026-02-14T00:00:00+01:00 \
+  --end=2026-02-21T00:00:00+01:00 \
+  --auto-decline=declineAllConflictingInvitations \
+  --decline-message="On vacation, back Feb 21"
+
+# Focus time
+npx go-calendar marc@blegal.eu create primary \
+  --type=focusTime \
+  --summary="Deep Work" \
+  --start=2026-02-10T09:00:00+01:00 \
+  --end=2026-02-10T12:00:00+01:00 \
+  --auto-decline=declineOnlyNewConflictingInvitations \
+  --chat-status=doNotDisturb \
+  --decline-message="In focus mode"
 ```
 Returns: `{ ok: true, id, htmlLink? }`
 
@@ -172,6 +219,8 @@ const availability = await queryFreeBusy(
 ## Types
 
 ```typescript
+type EventType = 'default' | 'outOfOffice' | 'workingLocation' | 'focusTime' | 'birthday';
+
 interface CalendarEvent {
   id: string;
   summary: string;
@@ -187,6 +236,35 @@ interface CalendarEvent {
   allDay?: boolean;
   organizer?: { email: string; displayName?: string };
   creator?: { email: string; displayName?: string };
+  eventType?: EventType;      // 'default' for regular events
+  workingLocation?: WorkingLocationProperties;  // when eventType is 'workingLocation'
+  outOfOffice?: OutOfOfficeProperties;          // when eventType is 'outOfOffice'
+  focusTime?: FocusTimeProperties;              // when eventType is 'focusTime'
+  birthday?: BirthdayProperties;                // when eventType is 'birthday'
+}
+
+interface WorkingLocationProperties {
+  type: 'homeOffice' | 'officeLocation' | 'customLocation';
+  homeOffice?: true;
+  officeLocation?: { buildingId?; deskId?; floorId?; floorSectionId?; label? };
+  customLocation?: { label? };
+}
+
+interface OutOfOfficeProperties {
+  autoDeclineMode?: 'declineNone' | 'declineAllConflictingInvitations' | 'declineOnlyNewConflictingInvitations';
+  declineMessage?: string;
+}
+
+interface FocusTimeProperties {
+  autoDeclineMode?: 'declineNone' | 'declineAllConflictingInvitations' | 'declineOnlyNewConflictingInvitations';
+  chatStatus?: string;        // 'available' or 'doNotDisturb'
+  declineMessage?: string;
+}
+
+interface BirthdayProperties {  // read-only
+  contact?: string;             // People API resource: "people/c12345"
+  type?: 'birthday' | 'anniversary' | 'custom' | 'self';
+  customTypeName?: string;
 }
 
 interface Attendee {

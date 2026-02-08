@@ -3,13 +3,23 @@
  */
 
 import type { calendar_v3 } from '@googleapis/calendar';
-import type { CalendarEvent, Attendee, CalendarInfo } from './types.js';
+import type {
+  CalendarEvent,
+  Attendee,
+  CalendarInfo,
+  EventType,
+  WorkingLocationProperties,
+  OutOfOfficeProperties,
+  FocusTimeProperties,
+  BirthdayProperties,
+} from './types.js';
 
 /** Parse a raw Calendar API event into our CalendarEvent shape */
 export function parseEvent(raw: calendar_v3.Schema$Event): CalendarEvent {
   const isAllDay = !!raw.start?.date;
+  const eventType = (raw.eventType ?? 'default') as EventType;
 
-  return {
+  const event: CalendarEvent = {
     id: raw.id ?? '',
     summary: raw.summary ?? '(no title)',
     description: raw.description ?? undefined,
@@ -28,6 +38,84 @@ export function parseEvent(raw: calendar_v3.Schema$Event): CalendarEvent {
     creator: raw.creator
       ? { email: raw.creator.email ?? '', displayName: raw.creator.displayName ?? undefined }
       : undefined,
+    eventType,
+  };
+
+  // Parse type-specific properties
+  if (raw.workingLocationProperties) {
+    event.workingLocation = parseWorkingLocation(raw.workingLocationProperties);
+  }
+  if (raw.outOfOfficeProperties) {
+    event.outOfOffice = parseOutOfOffice(raw.outOfOfficeProperties);
+  }
+  if (raw.focusTimeProperties) {
+    event.focusTime = parseFocusTime(raw.focusTimeProperties);
+  }
+  if (raw.birthdayProperties) {
+    event.birthday = parseBirthday(raw.birthdayProperties);
+  }
+
+  return event;
+}
+
+/** Parse working location properties */
+export function parseWorkingLocation(
+  raw: calendar_v3.Schema$EventWorkingLocationProperties
+): WorkingLocationProperties {
+  const result: WorkingLocationProperties = {
+    type: (raw.type as WorkingLocationProperties['type']) ?? 'customLocation',
+  };
+
+  if (raw.homeOffice !== undefined && raw.homeOffice !== null) {
+    result.homeOffice = true;
+  }
+  if (raw.officeLocation) {
+    result.officeLocation = {
+      buildingId: raw.officeLocation.buildingId ?? undefined,
+      deskId: raw.officeLocation.deskId ?? undefined,
+      floorId: raw.officeLocation.floorId ?? undefined,
+      floorSectionId: raw.officeLocation.floorSectionId ?? undefined,
+      label: raw.officeLocation.label ?? undefined,
+    };
+  }
+  if (raw.customLocation) {
+    result.customLocation = {
+      label: raw.customLocation.label ?? undefined,
+    };
+  }
+
+  return result;
+}
+
+/** Parse out-of-office properties */
+export function parseOutOfOffice(
+  raw: calendar_v3.Schema$EventOutOfOfficeProperties
+): OutOfOfficeProperties {
+  return {
+    autoDeclineMode: raw.autoDeclineMode as OutOfOfficeProperties['autoDeclineMode'] ?? undefined,
+    declineMessage: raw.declineMessage ?? undefined,
+  };
+}
+
+/** Parse focus time properties */
+export function parseFocusTime(
+  raw: calendar_v3.Schema$EventFocusTimeProperties
+): FocusTimeProperties {
+  return {
+    autoDeclineMode: raw.autoDeclineMode as FocusTimeProperties['autoDeclineMode'] ?? undefined,
+    chatStatus: raw.chatStatus ?? undefined,
+    declineMessage: raw.declineMessage ?? undefined,
+  };
+}
+
+/** Parse birthday properties */
+export function parseBirthday(
+  raw: calendar_v3.Schema$EventBirthdayProperties
+): BirthdayProperties {
+  return {
+    contact: raw.contact ?? undefined,
+    type: raw.type as BirthdayProperties['type'] ?? undefined,
+    customTypeName: raw.customTypeName ?? undefined,
   };
 }
 
@@ -56,7 +144,20 @@ export function parseCalendar(raw: calendar_v3.Schema$CalendarListEntry): Calend
 
 /** Build event request body from EventOptions */
 export function buildEventBody(
-  opts: { summary: string; description?: string; start: string; end: string; timeZone?: string; location?: string; attendees?: string[]; allDay?: boolean }
+  opts: {
+    summary: string;
+    description?: string;
+    start: string;
+    end: string;
+    timeZone?: string;
+    location?: string;
+    attendees?: string[];
+    allDay?: boolean;
+    eventType?: 'default' | 'outOfOffice' | 'workingLocation' | 'focusTime';
+    outOfOffice?: OutOfOfficeProperties;
+    workingLocation?: WorkingLocationProperties;
+    focusTime?: FocusTimeProperties;
+  }
 ): calendar_v3.Schema$Event {
   const event: calendar_v3.Schema$Event = {
     summary: opts.summary,
@@ -74,6 +175,53 @@ export function buildEventBody(
 
   if (opts.attendees?.length) {
     event.attendees = opts.attendees.map((email) => ({ email }));
+  }
+
+  // Special event types
+  if (opts.eventType && opts.eventType !== 'default') {
+    event.eventType = opts.eventType;
+
+    if (opts.eventType === 'outOfOffice' && opts.outOfOffice) {
+      event.outOfOfficeProperties = {
+        autoDeclineMode: opts.outOfOffice.autoDeclineMode ?? null,
+        declineMessage: opts.outOfOffice.declineMessage ?? null,
+      };
+    }
+
+    if (opts.eventType === 'focusTime' && opts.focusTime) {
+      event.focusTimeProperties = {
+        autoDeclineMode: opts.focusTime.autoDeclineMode ?? null,
+        chatStatus: opts.focusTime.chatStatus ?? null,
+        declineMessage: opts.focusTime.declineMessage ?? null,
+      };
+    }
+
+    if (opts.eventType === 'workingLocation' && opts.workingLocation) {
+      const wlProps: calendar_v3.Schema$EventWorkingLocationProperties = {
+        type: opts.workingLocation.type,
+      };
+
+      if (opts.workingLocation.type === 'homeOffice') {
+        wlProps.homeOffice = {};
+      } else if (opts.workingLocation.type === 'officeLocation' && opts.workingLocation.officeLocation) {
+        wlProps.officeLocation = {
+          buildingId: opts.workingLocation.officeLocation.buildingId,
+          deskId: opts.workingLocation.officeLocation.deskId,
+          floorId: opts.workingLocation.officeLocation.floorId,
+          floorSectionId: opts.workingLocation.officeLocation.floorSectionId,
+          label: opts.workingLocation.officeLocation.label,
+        };
+      } else if (opts.workingLocation.type === 'customLocation' && opts.workingLocation.customLocation) {
+        wlProps.customLocation = {
+          label: opts.workingLocation.customLocation.label,
+        };
+      }
+
+      event.workingLocationProperties = wlProps;
+      // Working location events are visibility 'public' and show as 'free'
+      event.visibility = 'public';
+      event.transparency = 'transparent';
+    }
   }
 
   return event;

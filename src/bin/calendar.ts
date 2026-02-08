@@ -26,12 +26,19 @@ function usage(): never {
     message: 'go-calendar <account> <command> [args...]',
     commands: {
       calendars: 'go-calendar <account> calendars',
-      events: 'go-calendar <account> events <calendarId> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."]',
+      events: 'go-calendar <account> events <calendarId> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]',
       event: 'go-calendar <account> event <calendarId> <eventId>',
-      create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>]',
+      create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--type=outOfOffice|workingLocation|focusTime]',
+      'create (ooo)': 'go-calendar <account> create <calendarId> --type=outOfOffice --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--decline-message="..."]',
+      'create (wl)': 'go-calendar <account> create <calendarId> --type=workingLocation --summary="..." --start=<dt> --end=<dt> --wl-type=homeOffice|officeLocation|customLocation [--wl-label="..."] [--wl-building=...] [--wl-floor=...] [--wl-desk=...]',
+      'create (focus)': 'go-calendar <account> create <calendarId> --type=focusTime --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--chat-status=doNotDisturb] [--decline-message="..."]',
       update: 'go-calendar <account> update <calendarId> <eventId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>]',
       delete: 'go-calendar <account> delete <calendarId> <eventId> [--confirm]',
       freebusy: 'go-calendar <account> freebusy <calendarId1,calendarId2> --from=<dt> --to=<dt>',
+    },
+    eventTypes: {
+      description: 'Events are listed with all types by default. Use --event-types to filter.',
+      types: ['default (regular events)', 'outOfOffice', 'workingLocation', 'focusTime', 'birthday (read-only)'],
     },
   }, null, 2));
   process.exit(1);
@@ -52,6 +59,50 @@ function parseFlags(args: string[]): Record<string, string> {
 /** Get positional args (non-flag) */
 function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
+}
+
+/** Build special event type properties from CLI flags */
+function buildSpecialEventFlags(flags: Record<string, string>): Partial<calendar.EventOptions> {
+  const result: Partial<calendar.EventOptions> = {};
+
+  if (flags.type === 'outOfOffice') {
+    result.outOfOffice = {
+      autoDeclineMode: (flags['auto-decline'] as calendar.OutOfOfficeProperties['autoDeclineMode']) ?? undefined,
+      declineMessage: flags['decline-message'] ?? undefined,
+    };
+  }
+
+  if (flags.type === 'focusTime') {
+    result.focusTime = {
+      autoDeclineMode: (flags['auto-decline'] as calendar.FocusTimeProperties['autoDeclineMode']) ?? undefined,
+      chatStatus: flags['chat-status'] ?? undefined,
+      declineMessage: flags['decline-message'] ?? undefined,
+    };
+  }
+
+  if (flags.type === 'workingLocation') {
+    const wlType = (flags['wl-type'] ?? 'homeOffice') as calendar.WorkingLocationProperties['type'];
+    const wl: calendar.WorkingLocationProperties = { type: wlType };
+
+    if (wlType === 'homeOffice') {
+      wl.homeOffice = true;
+    } else if (wlType === 'officeLocation') {
+      wl.officeLocation = {
+        label: flags['wl-label'] ?? undefined,
+        buildingId: flags['wl-building'] ?? undefined,
+        floorId: flags['wl-floor'] ?? undefined,
+        deskId: flags['wl-desk'] ?? undefined,
+      };
+    } else if (wlType === 'customLocation') {
+      wl.customLocation = {
+        label: flags['wl-label'] ?? undefined,
+      };
+    }
+
+    result.workingLocation = wl;
+  }
+
+  return result;
 }
 
 async function main() {
@@ -98,6 +149,9 @@ async function main() {
           timeMax: flags.to,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           query: flags.query,
+          eventTypes: flags['event-types']
+            ? flags['event-types'].split(',') as calendar.EventType[]
+            : undefined,
         });
         break;
 
@@ -117,6 +171,8 @@ async function main() {
           location: flags.location,
           attendees: flags.attendees?.split(','),
           allDay: 'all-day' in flags,
+          eventType: flags.type as calendar.EventOptions['eventType'],
+          ...buildSpecialEventFlags(flags),
         };
         result = await calendar.createEvent(auth, pos[0], createOpts);
         break;
@@ -133,6 +189,8 @@ async function main() {
           location: flags.location,
           attendees: flags.attendees?.split(','),
           allDay: 'all-day' in flags,
+          eventType: flags.type as calendar.EventOptions['eventType'],
+          ...buildSpecialEventFlags(flags),
         };
         result = await calendar.updateEvent(auth, pos[0], pos[1], updateOpts);
         break;
