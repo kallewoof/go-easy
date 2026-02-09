@@ -1,5 +1,11 @@
 # @marcfargas/go-easy
 
+## 0.3.1
+
+### Patch Changes
+
+- Fix encoding of non-ASCII display names in email address headers (From, To, Cc, Bcc). Characters like "Júlia" were corrupted due to missing RFC 2047 encoding — now properly encoded as `=?UTF-8?B?...?=`.
+
 ## 0.3.0
 
 ### Minor Changes
