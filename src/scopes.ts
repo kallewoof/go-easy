@@ -12,6 +12,7 @@ export const SCOPES: Record<GoogleService, string> = {
   gmail: 'https://mail.google.com/',
   drive: 'https://www.googleapis.com/auth/drive',
   calendar: 'https://www.googleapis.com/auth/calendar',
+  tasks: 'https://www.googleapis.com/auth/tasks',
 } as const;
 
 /** All scopes — requested by default during auth */

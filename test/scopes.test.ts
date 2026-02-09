@@ -10,8 +10,8 @@ describe('SCOPES', () => {
 });
 
 describe('ALL_SCOPES', () => {
-  it('contains all three scope URLs', () => {
-    expect(ALL_SCOPES).toHaveLength(3);
+  it('contains all scope URLs', () => {
+    expect(ALL_SCOPES).toHaveLength(4);
     expect(ALL_SCOPES).toContain('https://mail.google.com/');
     expect(ALL_SCOPES).toContain('https://www.googleapis.com/auth/drive');
     expect(ALL_SCOPES).toContain('https://www.googleapis.com/auth/calendar');
@@ -26,7 +26,8 @@ describe('scopeToService', () => {
   });
 
   it('returns undefined for unknown scopes', () => {
-    expect(scopeToService('https://www.googleapis.com/auth/tasks')).toBeUndefined();
+    expect(scopeToService('https://www.googleapis.com/auth/tasks')).toBe('tasks');
+    expect(scopeToService('https://www.googleapis.com/auth/unknown')).toBeUndefined();
   });
 });
 

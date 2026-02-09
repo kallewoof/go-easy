@@ -35,6 +35,7 @@ const ALL_SCOPES = [
   'https://mail.google.com/',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/tasks',
 ];
 
 // ─── Args ──────────────────────────────────────────────────
@@ -101,6 +102,7 @@ function scopeToService(scope: string): string {
   if (scope === 'https://mail.google.com/') return 'gmail';
   if (scope === 'https://www.googleapis.com/auth/drive') return 'drive';
   if (scope === 'https://www.googleapis.com/auth/calendar') return 'calendar';
+  if (scope === 'https://www.googleapis.com/auth/tasks') return 'tasks';
   return scope;
 }
 

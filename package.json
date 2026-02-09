@@ -8,6 +8,7 @@
     "./gmail": "./dist/gmail/index.js",
     "./drive": "./dist/drive/index.js",
     "./calendar": "./dist/calendar/index.js",
+    "./tasks": "./dist/tasks/index.js",
     "./auth": "./dist/auth.js",
     "./auth-store": "./dist/auth-store.js",
     "./scopes": "./dist/scopes.js"
@@ -16,7 +17,8 @@
     "go-easy": "dist/bin/easy.js",
     "go-gmail": "dist/bin/gmail.js",
     "go-drive": "dist/bin/drive.js",
-    "go-calendar": "dist/bin/calendar.js"
+    "go-calendar": "dist/bin/calendar.js",
+    "go-tasks": "dist/bin/tasks.js"
   },
   "scripts": {
     "build": "tsc",
@@ -41,7 +43,9 @@
     "pi-package"
   ],
   "pi": {
-    "skills": ["./skills"]
+    "skills": [
+      "./skills"
+    ]
   },
   "files": [
     "dist",
@@ -63,6 +67,7 @@
     "@googleapis/calendar": "^14.2.0",
     "@googleapis/drive": "^20.1.0",
     "@googleapis/gmail": "^16.1.1",
+    "@googleapis/tasks": "^12.0.0",
     "google-auth-library": "^10.5.0",
     "marked": "^17.0.1"
   }

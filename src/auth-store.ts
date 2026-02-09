@@ -16,7 +16,7 @@ import { SCOPES } from './scopes.js';
 
 // ─── Types ─────────────────────────────────────────────────
 
-export type GoogleService = 'gmail' | 'drive' | 'calendar';
+export type GoogleService = 'gmail' | 'drive' | 'calendar' | 'tasks';
 
 export interface OAuthToken {
   refreshToken: string;
@@ -31,6 +31,7 @@ export interface GoEasyAccount {
     gmail?: OAuthToken;
     drive?: OAuthToken;
     calendar?: OAuthToken;
+    tasks?: OAuthToken;
   };
   addedAt: string;
 }
