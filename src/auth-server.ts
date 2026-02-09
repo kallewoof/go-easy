@@ -52,6 +52,7 @@ if (!email) {
 
 const SUCCESS_HTML = `<!DOCTYPE html>
 <html>
+<head><meta charset="utf-8"></head>
 <body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f0fdf4;">
 <div style="text-align:center;max-width:400px;">
 <h1 style="color:#16a34a;">✅ Authorization successful!</h1>
@@ -62,6 +63,7 @@ const SUCCESS_HTML = `<!DOCTYPE html>
 
 const DENIED_HTML = `<!DOCTYPE html>
 <html>
+<head><meta charset="utf-8"></head>
 <body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#fef2f2;">
 <div style="text-align:center;max-width:400px;">
 <h1 style="color:#dc2626;">❌ Authorization declined</h1>
@@ -72,6 +74,7 @@ const DENIED_HTML = `<!DOCTYPE html>
 
 const PARTIAL_HTML = (granted: string[], missing: string[]) => `<!DOCTYPE html>
 <html>
+<head><meta charset="utf-8"></head>
 <body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#fffbeb;">
 <div style="text-align:center;max-width:500px;">
 <h1 style="color:#d97706;">⚠️ Partial authorization</h1>
@@ -263,7 +266,7 @@ async function start(): Promise<void> {
 
       if (!tokenResponse.refresh_token) {
         res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(`<!DOCTYPE html><html><body style="font-family:system-ui;text-align:center;padding:40px;">
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:system-ui;text-align:center;padding:40px;">
           <h1 style="color:#dc2626;">Error: No refresh token received</h1>
           <p>Google did not return a refresh token. This can happen if the app was previously authorized.
           Try revoking access at <a href="https://myaccount.google.com/permissions">Google Account Permissions</a>
