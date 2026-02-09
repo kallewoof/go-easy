@@ -8,9 +8,12 @@
     "./gmail": "./dist/gmail/index.js",
     "./drive": "./dist/drive/index.js",
     "./calendar": "./dist/calendar/index.js",
-    "./auth": "./dist/auth.js"
+    "./auth": "./dist/auth.js",
+    "./auth-store": "./dist/auth-store.js",
+    "./scopes": "./dist/scopes.js"
   },
   "bin": {
+    "go-easy": "dist/bin/easy.js",
     "go-gmail": "dist/bin/gmail.js",
     "go-drive": "dist/bin/drive.js",
     "go-calendar": "dist/bin/calendar.js"

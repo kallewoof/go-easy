@@ -25,11 +25,58 @@ export class GoEasyError extends Error {
   }
 }
 
+/**
+ * Auth error codes:
+ *   AUTH_NO_ACCOUNT    — Account not configured at all
+ *   AUTH_MISSING_SCOPE — Account exists but token lacks required scope
+ *   AUTH_TOKEN_REVOKED — Refresh token was revoked (Google returned invalid_grant)
+ *   AUTH_REFRESH_FAILED — Transient network error refreshing token
+ *   AUTH_STORE_CORRUPT — accounts.json unreadable
+ *   AUTH_NO_CREDENTIALS — credentials.json missing
+ *   AUTH_ERROR         — Generic (legacy fallback)
+ */
+export type AuthErrorCode =
+  | 'AUTH_NO_ACCOUNT'
+  | 'AUTH_MISSING_SCOPE'
+  | 'AUTH_TOKEN_REVOKED'
+  | 'AUTH_REFRESH_FAILED'
+  | 'AUTH_STORE_CORRUPT'
+  | 'AUTH_NO_CREDENTIALS'
+  | 'AUTH_ERROR';
+
 /** OAuth2 token expired, missing, or invalid */
 export class AuthError extends GoEasyError {
-  constructor(message: string, cause?: unknown) {
-    super(message, 'AUTH_ERROR', cause);
+  /** Exact CLI command that fixes this error */
+  public readonly fix?: string;
+
+  constructor(message: string, cause?: unknown);
+  constructor(code: AuthErrorCode, opts: { message: string; fix?: string; cause?: unknown });
+  constructor(
+    messageOrCode: string,
+    causeOrOpts?: unknown
+  ) {
+    // Disambiguate: the opts form is a plain object with a `fix` key or
+    // is NOT an Error instance. An Error passed as second arg is always the legacy cause form.
+    if (
+      typeof causeOrOpts === 'object' &&
+      causeOrOpts !== null &&
+      !(causeOrOpts instanceof Error) &&
+      'message' in causeOrOpts
+    ) {
+      const opts = causeOrOpts as { message: string; fix?: string; cause?: unknown };
+      super(opts.message, messageOrCode, opts.cause);
+      this.fix = opts.fix;
+    } else {
+      super(messageOrCode, 'AUTH_ERROR', causeOrOpts);
+    }
     this.name = 'AuthError';
+  }
+
+  override toJSON() {
+    return {
+      ...super.toJSON(),
+      ...(this.fix ? { fix: this.fix } : {}),
+    };
   }
 }
 

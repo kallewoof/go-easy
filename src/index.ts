@@ -12,8 +12,19 @@
  */
 
 // Auth
-export { getAuth, listAccounts, clearAuthCache } from './auth.js';
+export { getAuth, listAccounts, listAllAccounts, clearAuthCache } from './auth.js';
 export type { GoogleService } from './auth.js';
+
+// Auth Store
+export type {
+  GoEasyAccount,
+  AccountStore,
+  OAuthToken,
+  OAuthCredentials,
+} from './auth-store.js';
+
+// Scopes
+export { SCOPES, ALL_SCOPES, scopeToService } from './scopes.js';
 
 // Safety
 export { setSafetyContext, resetSafetyContext, guardOperation } from './safety.js';

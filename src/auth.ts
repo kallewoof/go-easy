@@ -1,76 +1,42 @@
 /**
  * Auth module — OAuth2 client factory with multi-account support.
  *
- * Phase 1 (MVP): Import tokens from existing CLI stores:
- *   ~/.gmcli/accounts.json  → Gmail tokens
- *   ~/.gdcli/accounts.json  → Drive tokens
- *   ~/.gccli/accounts.json  → Calendar tokens
+ * Reads tokens from the unified store at ~/.go-easy/accounts.json.
+ * Falls back to legacy CLI stores (~/.gmcli, ~/.gdcli, ~/.gccli) via migration.
  *
- * Phase 2 (post-migration): Unified token store at ~/.go-easy/
- *   with combined scopes per account (single OAuth consent).
- *
- * Each CLI token only works for its service's scopes. The library
- * routes internally — callers specify account (email), and each
- * service module gets the right OAuth2Client.
+ * Token resolution per account:
+ *   1. combined token (if it has the needed scope) → use it
+ *   2. per-service token (legacy migration) → use it
+ *   3. neither → AUTH_MISSING_SCOPE with fix command
  */
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { OAuth2Client } from 'google-auth-library';
 import { AuthError } from './errors.js';
-
-/** Services we can load tokens for */
-export type GoogleService = 'gmail' | 'drive' | 'calendar';
-
-/** Shape of an account entry in CLI accounts.json */
-interface CliAccountEntry {
-  email: string;
-  oauth2: {
-    clientId: string;
-    clientSecret: string;
-    refreshToken: string;
-  };
-}
-
-/** Map service → CLI config directory name */
-const CLI_DIRS: Record<GoogleService, string> = {
-  gmail: '.gmcli',
-  drive: '.gdcli',
-  calendar: '.gccli',
-};
+import {
+  readAccountStore,
+  readCredentials,
+  findAccount,
+  resolveToken,
+  migrateFromLegacy,
+  hasLegacyStores,
+} from './auth-store.js';
+import type { GoogleService, AccountStore } from './auth-store.js';
+export type { GoogleService } from './auth-store.js';
 
 /** Cache: "service:email" → OAuth2Client */
 const clientCache = new Map<string, OAuth2Client>();
 
 /**
- * Load accounts from a CLI's accounts.json file.
- */
-async function loadCliAccounts(service: GoogleService): Promise<CliAccountEntry[]> {
-  const dir = CLI_DIRS[service];
-  const accountsPath = join(homedir(), dir, 'accounts.json');
-
-  try {
-    const raw = await readFile(accountsPath, 'utf-8');
-    return JSON.parse(raw) as CliAccountEntry[];
-  } catch (err) {
-    throw new AuthError(
-      `Cannot read ${service} accounts from ${accountsPath}. Is the CLI configured?`,
-      err
-    );
-  }
-}
-
-/**
  * Get an OAuth2Client for a specific service and account.
  *
- * @param service - Which Google service (determines which CLI token to use)
+ * @param service - Which Google service (determines scope check)
  * @param account - Email address (defaults to first account in the store)
  * @returns Configured OAuth2Client with refresh token set
+ * @throws AuthError with specific code and fix command
  *
  * @example
  * ```ts
- * import { getAuth } from 'go-easy/auth';
+ * import { getAuth } from '@marcfargas/go-easy/auth';
  * const auth = await getAuth('gmail', 'marc@blegal.eu');
  * ```
  */
@@ -78,44 +44,117 @@ export async function getAuth(
   service: GoogleService,
   account?: string
 ): Promise<OAuth2Client> {
-  const accounts = await loadCliAccounts(service);
+  // Try to load the store
+  let store = await readAccountStore();
 
-  const entry = account
-    ? accounts.find((a) => a.email === account)
-    : accounts[0];
-
-  if (!entry) {
-    const available = accounts.map((a) => a.email).join(', ');
-    throw new AuthError(
-      account
-        ? `Account "${account}" not found for ${service}. Available: ${available}`
-        : `No accounts configured for ${service}`
-    );
+  // If no store exists, check for legacy stores and tell the caller
+  if (!store) {
+    const hasLegacy = await hasLegacyStores();
+    if (hasLegacy) {
+      // Auto-migrate is NOT done here (D5: no side effects in library function).
+      // But we give an actionable error.
+      throw new AuthError('AUTH_NO_ACCOUNT', {
+        message: account
+          ? `Account "${account}" not configured. Legacy tokens found — run migration first.`
+          : `No accounts configured. Legacy tokens found — run migration first.`,
+        fix: 'npx go-easy auth list',
+      });
+    }
+    throw new AuthError('AUTH_NO_ACCOUNT', {
+      message: account
+        ? `Account "${account}" not configured`
+        : 'No accounts configured',
+      fix: account
+        ? `npx go-easy auth add ${account}`
+        : 'npx go-easy auth add <email>',
+    });
   }
 
+  // Find the account
+  const entry = findAccount(store, account);
+  if (!entry) {
+    const available = store.accounts.map((a) => a.email).join(', ');
+    throw new AuthError('AUTH_NO_ACCOUNT', {
+      message: account
+        ? `Account "${account}" not found. Available: ${available}`
+        : 'No accounts configured',
+      fix: account
+        ? `npx go-easy auth add ${account}`
+        : 'npx go-easy auth add <email>',
+    });
+  }
+
+  // Check cache
   const cacheKey = `${service}:${entry.email}`;
   const cached = clientCache.get(cacheKey);
   if (cached) return cached;
 
-  const oauth2 = new OAuth2Client(
-    entry.oauth2.clientId,
-    entry.oauth2.clientSecret
-  );
+  // Resolve token for the requested service
+  const token = resolveToken(entry, service);
+  if (!token) {
+    throw new AuthError('AUTH_MISSING_SCOPE', {
+      message: `No ${service} token for ${entry.email}`,
+      fix: `npx go-easy auth add ${entry.email}`,
+    });
+  }
 
-  oauth2.setCredentials({
-    refresh_token: entry.oauth2.refreshToken,
-  });
+  // Load credentials
+  const creds = await readCredentials();
+  if (!creds) {
+    throw new AuthError('AUTH_NO_CREDENTIALS', {
+      message: 'OAuth client credentials not found at ~/.go-easy/credentials.json',
+      fix: 'npx go-easy auth add <email>',
+    });
+  }
+
+  // Build OAuth2Client
+  const oauth2 = new OAuth2Client(creds.clientId, creds.clientSecret);
+  oauth2.setCredentials({ refresh_token: token.refreshToken });
 
   clientCache.set(cacheKey, oauth2);
   return oauth2;
 }
 
 /**
- * List available accounts for a service.
+ * List available accounts (emails) for a service.
+ * Only returns accounts that have a token for the given service.
  */
 export async function listAccounts(service: GoogleService): Promise<string[]> {
-  const accounts = await loadCliAccounts(service);
-  return accounts.map((a) => a.email);
+  const store = await readAccountStore();
+  if (!store) return [];
+  return store.accounts
+    .filter((a) => resolveToken(a, service) !== null)
+    .map((a) => a.email);
+}
+
+/**
+ * List all accounts regardless of service.
+ */
+export async function listAllAccounts(): Promise<
+  Array<{ email: string; scopes: string[]; source: string }>
+> {
+  const store = await readAccountStore();
+  if (!store) return [];
+  return store.accounts.map((a) => {
+    if (a.tokens.combined) {
+      return {
+        email: a.email,
+        scopes: a.tokens.combined.scopes,
+        source: 'combined',
+      };
+    }
+    // Collect scopes from per-service tokens
+    const scopes: string[] = [];
+    for (const svc of ['gmail', 'drive', 'calendar'] as const) {
+      const t = a.tokens[svc];
+      if (t) scopes.push(...t.scopes);
+    }
+    return {
+      email: a.email,
+      scopes,
+      source: 'legacy',
+    };
+  });
 }
 
 /**
@@ -124,3 +163,6 @@ export async function listAccounts(service: GoogleService): Promise<string[]> {
 export function clearAuthCache(): void {
   clientCache.clear();
 }
+
+// Re-export migration for CLI use
+export { migrateFromLegacy, hasLegacyStores } from './auth-store.js';
