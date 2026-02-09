@@ -56,6 +56,14 @@
   ],
   "author": "Marc Fargas",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marcfargas/go-easy"
+  },
+  "bugs": {
+    "url": "https://github.com/marcfargas/go-easy/issues"
+  },
+  "homepage": "https://github.com/marcfargas/go-easy#readme",
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.2",
     "@changesets/cli": "^2.29.8",
