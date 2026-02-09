@@ -37,7 +37,18 @@
     "drive",
     "calendar",
     "api",
-    "ai-agent"
+    "ai-agent",
+    "pi-package"
+  ],
+  "pi": {
+    "skills": ["./skills"]
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "author": "Marc Fargas",
   "license": "MIT",

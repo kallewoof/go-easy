@@ -161,9 +161,11 @@ export function buildEventBody(
 ): calendar_v3.Schema$Event {
   const event: calendar_v3.Schema$Event = {
     summary: opts.summary,
-    description: opts.description,
-    location: opts.location,
   };
+
+  // Only include optional fields when explicitly provided (PATCH-safe)
+  if (opts.description !== undefined) event.description = opts.description;
+  if (opts.location !== undefined) event.location = opts.location;
 
   if (opts.allDay) {
     event.start = { date: opts.start };

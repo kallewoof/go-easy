@@ -103,6 +103,7 @@ async function main() {
           query: flags.query,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           orderBy: flags.order,
+          pageToken: flags['page-token'],
         });
         break;
 
@@ -111,6 +112,7 @@ async function main() {
         result = await drive.searchFiles(auth, {
           query: pos[0],
           maxResults: flags.max ? parseInt(flags.max) : undefined,
+          pageToken: flags['page-token'],
         });
         break;
 

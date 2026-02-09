@@ -149,6 +149,7 @@ async function main() {
           timeMax: flags.to,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           query: flags.query,
+          pageToken: flags['page-token'],
           eventTypes: flags['event-types']
             ? flags['event-types'].split(',') as calendar.EventType[]
             : undefined,
@@ -180,18 +181,21 @@ async function main() {
 
       case 'update': {
         if (!pos[0] || !pos[1]) usage();
+        // Only include fields the user actually provided (PATCH semantics)
         const updateOpts: calendar.EventOptions = {
           summary: flags.summary ?? '',
-          description: flags.description,
           start: flags.start ?? '',
           end: flags.end ?? '',
-          timeZone: flags.tz,
-          location: flags.location,
-          attendees: flags.attendees?.split(','),
-          allDay: 'all-day' in flags,
-          eventType: flags.type as calendar.EventOptions['eventType'],
-          ...buildSpecialEventFlags(flags),
         };
+        if ('description' in flags) updateOpts.description = flags.description;
+        if ('tz' in flags) updateOpts.timeZone = flags.tz;
+        if ('location' in flags) updateOpts.location = flags.location;
+        if ('attendees' in flags) updateOpts.attendees = flags.attendees.split(',');
+        if ('all-day' in flags) updateOpts.allDay = true;
+        if ('type' in flags) {
+          updateOpts.eventType = flags.type as calendar.EventOptions['eventType'];
+          Object.assign(updateOpts, buildSpecialEventFlags(flags));
+        }
         result = await calendar.updateEvent(auth, pos[0], pos[1], updateOpts);
         break;
       }

@@ -22,6 +22,7 @@ vi.mock('@googleapis/calendar', () => ({
       get: (args: unknown) => mockEventsGet(args),
       insert: (args: unknown) => mockEventsInsert(args),
       update: (args: unknown) => mockEventsUpdate(args),
+      patch: (args: unknown) => mockEventsUpdate(args),
       delete: (args: unknown) => mockEventsDelete(args),
     },
     freebusy: {

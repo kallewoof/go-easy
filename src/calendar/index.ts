@@ -188,7 +188,9 @@ export async function updateEvent(
   const body = buildEventBody(opts);
 
   try {
-    const res = await cal.events.update({
+    // Use PATCH (partial update) instead of PUT (full replace)
+    // This avoids data loss — only provided fields are updated
+    const res = await cal.events.patch({
       calendarId,
       eventId,
       requestBody: body,
