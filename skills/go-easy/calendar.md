@@ -13,9 +13,9 @@ All commands output JSON to stdout. Errors output JSON to stderr with exit code 
 #### calendars
 List all calendars for the account.
 ```bash
-npx go-calendar marc@blegal.eu calendars
+npx go-calendar <account> calendars
 ```
-Returns: `[{ id, summary, description?, primary?, timeZone?, backgroundColor? }]`
+Returns: `Array<{ id, summary, description?, primary?, timeZone?, backgroundColor? }>` (bare array)
 
 Use `primary` as calendarId for the main calendar in other commands.
 
@@ -24,83 +24,87 @@ List events on a calendar. By default returns ALL event types (regular, out-of-o
 working location, focus time, birthdays).
 ```bash
 # Upcoming events (all types)
-npx go-calendar marc@blegal.eu events primary
+npx go-calendar <account> events primary
 
 # Date range
-npx go-calendar marc@blegal.eu events primary \
+npx go-calendar <account> events primary \
   --from=2026-02-01T00:00:00Z \
   --to=2026-02-28T23:59:59Z
 
-# With text search
-npx go-calendar marc@blegal.eu events primary --query="meeting" --max=10
+# With text search and pagination
+npx go-calendar <account> events primary --query="meeting" --max=10
+npx go-calendar <account> events primary --max=50 --page-token=<token>
 
 # Filter by event type
-npx go-calendar marc@blegal.eu events primary --event-types=workingLocation
-npx go-calendar marc@blegal.eu events primary --event-types=default,outOfOffice
-
-# On a specific calendar
-npx go-calendar marc@blegal.eu events <calendarId> --from=2026-02-10T00:00:00Z
+npx go-calendar <account> events primary --event-types=workingLocation
+npx go-calendar <account> events primary --event-types=default,outOfOffice
 ```
 Returns: `{ items: CalendarEvent[], nextPageToken? }`
+
+**Defaults:**
+- `--max`: 20 per page
+- `--from`: now (if omitted, returns events from current time onward)
+- `--to`: no upper bound (if omitted, returns all future events up to `--max`)
+- Recurring events are expanded into individual instances (singleEvents=true)
+- All event types included (the Google API hides workingLocation and birthday by default — go-easy includes them)
 
 **Event types**: `default`, `outOfOffice`, `workingLocation`, `focusTime`, `birthday`
 
 #### event
 Get a single event by ID.
 ```bash
-npx go-calendar marc@blegal.eu event <calendarId> <eventId>
+npx go-calendar <account> event <calendarId> <eventId>
 ```
 Returns: `CalendarEvent`
 
+For recurring events, this returns the recurring event definition, not individual instances.
+Use the `recurringEventId` from a listed instance to find its parent.
+
 #### create (WRITE)
-Create a new event. Supports all writable event types.
+Create a new event.
+
+**Required flags:** `--summary`, `--start`, `--end`
+**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`, `--type` + type-specific flags
+
 ```bash
 # Regular timed event
-npx go-calendar marc@blegal.eu create primary \
+npx go-calendar <account> create primary \
   --summary="Team Meeting" \
   --start=2026-02-10T10:00:00+01:00 \
   --end=2026-02-10T11:00:00+01:00 \
   --description="Weekly sync" \
-  --location="Office" \
-  --tz=Europe/Madrid
+  --location="Office"
 
-# All-day event
-npx go-calendar marc@blegal.eu create primary \
+# All-day event (end date is EXCLUSIVE — Feb 14 only)
+npx go-calendar <account> create primary \
   --summary="Company Holiday" \
   --start=2026-02-14 \
   --end=2026-02-15 \
   --all-day
 
-# With attendees
-npx go-calendar marc@blegal.eu create primary \
+# With attendees (invitation emails sent automatically)
+npx go-calendar <account> create primary \
   --summary="Project Review" \
   --start=2026-02-12T14:00:00+01:00 \
   --end=2026-02-12T15:00:00+01:00 \
   --attendees=alice@example.com,bob@example.com
 
 # Working location — home office
-npx go-calendar marc@blegal.eu create primary \
+npx go-calendar <account> create primary \
   --type=workingLocation \
   --summary="Home" \
   --start=2026-02-10 --end=2026-02-11 --all-day \
   --wl-type=homeOffice
 
 # Working location — office
-npx go-calendar marc@blegal.eu create primary \
+npx go-calendar <account> create primary \
   --type=workingLocation \
   --summary="Barcelona" \
   --start=2026-02-10 --end=2026-02-11 --all-day \
   --wl-type=officeLocation --wl-label="Barcelona Office"
 
-# Working location — custom
-npx go-calendar marc@blegal.eu create primary \
-  --type=workingLocation \
-  --summary="Coworking" \
-  --start=2026-02-10 --end=2026-02-11 --all-day \
-  --wl-type=customLocation --wl-label="WeWork Diagonal"
-
-# Out of office
-npx go-calendar marc@blegal.eu create primary \
+# Out of office ⚠️ --auto-decline sends decline emails to existing invitations
+npx go-calendar <account> create primary \
   --type=outOfOffice \
   --summary="Vacation" \
   --start=2026-02-14T00:00:00+01:00 \
@@ -108,43 +112,52 @@ npx go-calendar marc@blegal.eu create primary \
   --auto-decline=declineAllConflictingInvitations \
   --decline-message="On vacation, back Feb 21"
 
-# Focus time
-npx go-calendar marc@blegal.eu create primary \
+# Focus time ⚠️ --auto-decline sends decline emails to existing invitations
+npx go-calendar <account> create primary \
   --type=focusTime \
   --summary="Deep Work" \
   --start=2026-02-10T09:00:00+01:00 \
   --end=2026-02-10T12:00:00+01:00 \
   --auto-decline=declineOnlyNewConflictingInvitations \
-  --chat-status=doNotDisturb \
-  --decline-message="In focus mode"
+  --chat-status=doNotDisturb
 ```
 Returns: `{ ok: true, id, htmlLink? }`
 
 #### update (WRITE)
-Update an existing event. This is a **full replace** — any field you omit will be cleared.
+Update an existing event. Uses PATCH — only provided fields are changed, others are preserved.
 
 ⚠️ If the event has attendees, update notifications will be sent automatically.
 
-**Best practice**: Fetch the event first with `event`, then pass back all fields with your changes.
-
 ```bash
-# 1. Fetch current state
-npx go-calendar marc@blegal.eu event primary <eventId>
-# 2. Update with all fields preserved
-npx go-calendar marc@blegal.eu update primary <eventId> \
+# Update just the summary (other fields unchanged)
+npx go-calendar <account> update primary <eventId> \
+  --summary="Updated Meeting"
+
+# Reschedule
+npx go-calendar <account> update primary <eventId> \
   --summary="Updated Meeting" \
   --start=2026-02-10T11:00:00+01:00 \
-  --end=2026-02-10T12:00:00+01:00 \
-  --description="Weekly sync" \
-  --attendees=alice@example.com,bob@example.com
+  --end=2026-02-10T12:00:00+01:00
+
+# Update attendees
+npx go-calendar <account> update primary <eventId> \
+  --summary="Review" \
+  --start=2026-02-10T14:00:00+01:00 \
+  --end=2026-02-10T15:00:00+01:00 \
+  --attendees=alice@example.com,bob@example.com,carol@example.com
 ```
 Returns: `{ ok: true, id, htmlLink? }`
+
+**Required flags:** `--summary`, `--start`, `--end` (always required even for PATCH — Google API needs them)
+**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`
 
 #### delete ⚠️ DESTRUCTIVE
 Delete an event. Requires `--confirm`.
 ```bash
-npx go-calendar marc@blegal.eu delete primary <eventId> --confirm
+npx go-calendar <account> delete primary <eventId> --confirm
 ```
+Returns: `{ ok: true, id }`
+
 ⚠️ If the event has attendees, cancellation emails will be sent automatically.
 
 Without `--confirm`:
@@ -156,16 +169,18 @@ Without `--confirm`:
 Check availability across calendars.
 ```bash
 # Single calendar
-npx go-calendar marc@blegal.eu freebusy primary \
+npx go-calendar <account> freebusy primary \
   --from=2026-02-10T00:00:00Z \
   --to=2026-02-10T23:59:59Z
 
 # Multiple calendars
-npx go-calendar marc@blegal.eu freebusy primary,colleague@example.com \
+npx go-calendar <account> freebusy primary,colleague@example.com \
   --from=2026-02-10T08:00:00Z \
   --to=2026-02-10T18:00:00Z
 ```
-Returns: `[{ calendarId, busy: [{ start, end }] }]`
+Returns: `Array<{ calendarId, busy: [{ start, end }] }>`
+
+**Required flags:** `--from`, `--to`
 
 ## Library API
 
@@ -176,17 +191,25 @@ import { listCalendars, listEvents, getEvent, createEvent,
 } from '@marcfargas/go-easy/calendar';
 import { setSafetyContext } from '@marcfargas/go-easy';
 
-const auth = await getAuth('calendar', 'marc@blegal.eu');
+const auth = await getAuth('calendar', '<account>');
 
 // List calendars
 const cals = await listCalendars(auth);
 
-// List events
-const events = await listEvents(auth, 'primary', {
+// List events (with pagination)
+const page1 = await listEvents(auth, 'primary', {
   timeMin: '2026-02-01T00:00:00Z',
   timeMax: '2026-02-28T23:59:59Z',
   maxResults: 50,
 });
+if (page1.nextPageToken) {
+  const page2 = await listEvents(auth, 'primary', {
+    timeMin: '2026-02-01T00:00:00Z',
+    timeMax: '2026-02-28T23:59:59Z',
+    maxResults: 50,
+    pageToken: page1.nextPageToken,
+  });
+}
 
 // Get single event
 const event = await getEvent(auth, 'primary', 'eventId');
@@ -201,7 +224,7 @@ const created = await createEvent(auth, 'primary', {
   attendees: ['alice@example.com'],
 });
 
-// Update event (WRITE)
+// Update event (WRITE — PATCH semantics)
 await updateEvent(auth, 'primary', 'eventId', {
   summary: 'Updated',
   start: '2026-02-10T11:00:00+01:00',
@@ -223,9 +246,27 @@ const availability = await queryFreeBusy(
 
 ## Date/Time Formats
 
-- **Timed events**: ISO 8601 with timezone — `2026-02-10T10:00:00+01:00` or UTC `2026-02-10T09:00:00Z`
+- **Timed events**: ISO 8601 with offset — `2026-02-10T10:00:00+01:00` or UTC `2026-02-10T09:00:00Z`
 - **All-day events**: Date only — `2026-02-14` (with `--all-day` flag in CLI)
-- **Timezone**: IANA format — `Europe/Madrid`, `America/New_York`, etc.
+- **Timezone (`--tz`)**: IANA format — `Europe/Madrid`, `America/New_York`, etc.
+
+### Timezone semantics
+
+- If `--start`/`--end` include an offset (e.g. `+01:00`), that offset is used directly
+- `--tz` sets the calendar display timezone (e.g. for recurring events or DST transitions)
+- If `--start`/`--end` are UTC (`Z`) and `--tz` is set, the event displays in that timezone
+
+### All-day event end date
+
+All-day end dates are **exclusive** (Google Calendar convention):
+- One day event on Feb 14: `--start=2026-02-14 --end=2026-02-15`
+- Three day event Feb 14–16: `--start=2026-02-14 --end=2026-02-17`
+
+### Recurring events
+
+Recurring events are not directly supported for creation/update.
+When listing events, recurring events are expanded into individual instances by default (`singleEvents=true`).
+Each instance has a `recurringEventId` pointing to the parent definition.
 
 ## Types
 
@@ -243,15 +284,23 @@ interface CalendarEvent {
   attendees?: Attendee[];
   status?: 'confirmed' | 'tentative' | 'cancelled';
   htmlLink?: string;
-  recurringEventId?: string;
+  recurringEventId?: string;  // parent recurring event (for instances)
   allDay?: boolean;
   organizer?: { email: string; displayName?: string };
   creator?: { email: string; displayName?: string };
-  eventType?: EventType;      // 'default' for regular events
-  workingLocation?: WorkingLocationProperties;  // when eventType is 'workingLocation'
-  outOfOffice?: OutOfOfficeProperties;          // when eventType is 'outOfOffice'
-  focusTime?: FocusTimeProperties;              // when eventType is 'focusTime'
-  birthday?: BirthdayProperties;                // when eventType is 'birthday'
+  eventType?: EventType;
+  workingLocation?: WorkingLocationProperties;
+  outOfOffice?: OutOfOfficeProperties;
+  focusTime?: FocusTimeProperties;
+  birthday?: BirthdayProperties;  // read-only
+}
+
+interface Attendee {
+  email: string;
+  displayName?: string;
+  responseStatus?: 'needsAction' | 'declined' | 'tentative' | 'accepted';
+  organizer?: boolean;
+  self?: boolean;
 }
 
 interface WorkingLocationProperties {
@@ -272,18 +321,10 @@ interface FocusTimeProperties {
   declineMessage?: string;
 }
 
-interface BirthdayProperties {  // read-only
-  contact?: string;             // People API resource: "people/c12345"
+interface BirthdayProperties {  // read-only, cannot be created
+  contact?: string;
   type?: 'birthday' | 'anniversary' | 'custom' | 'self';
   customTypeName?: string;
-}
-
-interface Attendee {
-  email: string;
-  displayName?: string;
-  responseStatus?: 'needsAction' | 'declined' | 'tentative' | 'accepted';
-  organizer?: boolean;
-  self?: boolean;
 }
 
 interface CalendarInfo {

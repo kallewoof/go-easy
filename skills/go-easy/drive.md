@@ -7,6 +7,7 @@ npx go-drive <account> <command> [args...] [--flags]
 ```
 
 All commands output JSON to stdout. Errors output JSON to stderr with exit code 1.
+Shared Drives are supported transparently.
 
 ### Commands
 
@@ -14,97 +15,122 @@ All commands output JSON to stdout. Errors output JSON to stderr with exit code 
 List files in a folder or by metadata query.
 ```bash
 # List root folder (most recently modified first)
-npx go-drive marc@blegal.eu ls
+npx go-drive <account> ls
 
 # List specific folder
-npx go-drive marc@blegal.eu ls <folderId>
+npx go-drive <account> ls <folderId>
 
 # With metadata query
-npx go-drive marc@blegal.eu ls --query="name contains 'report'"
+npx go-drive <account> ls --query="name contains 'report'"
 
-# Combine folder + query
-npx go-drive marc@blegal.eu ls <folderId> --query="mimeType = 'application/pdf'" --max=10
+# Combine folder + query + pagination
+npx go-drive <account> ls <folderId> --query="mimeType = 'application/pdf'" --max=10
+npx go-drive <account> ls --max=50 --page-token=<token>
 
 # Order by name
-npx go-drive marc@blegal.eu ls --order="name"
+npx go-drive <account> ls --order="name"
 ```
 Returns: `{ items: DriveFile[], nextPageToken? }`
 
+**Defaults:**
+- `--max`: 20 per page
+- `--order`: `modifiedTime desc` (most recently modified first)
+
+**Valid `--order` values:** `name`, `modifiedTime`, `modifiedTime desc`, `createdTime`, `createdTime desc`, `folder`, `quotaBytesUsed`, `recency`
+
 #### search
-Full-text content search (searches inside files).
+Full-text content search (searches inside file contents).
 ```bash
-npx go-drive marc@blegal.eu search "quarterly revenue"
-npx go-drive marc@blegal.eu search "contract clause 5" --max=5
+npx go-drive <account> search "quarterly revenue"
+npx go-drive <account> search "contract clause 5" --max=5
+npx go-drive <account> search "budget" --page-token=<token>
 ```
 Returns: `{ items: DriveFile[], nextPageToken? }`
+
+- `--max`: no default (returns all matches, Drive API decides page size)
 
 **Note**: `search` searches file *contents*. Use `ls --query` to search by filename/metadata.
 
 #### get
 Get file metadata by ID.
 ```bash
-npx go-drive marc@blegal.eu get <fileId>
+npx go-drive <account> get <fileId>
 ```
 Returns: `DriveFile`
 
 #### download
 Download a file (writes to disk).
 ```bash
-npx go-drive marc@blegal.eu download <fileId>              # saves as original filename
-npx go-drive marc@blegal.eu download <fileId> ./output.pdf  # saves to specific path
+npx go-drive <account> download <fileId>              # saves as original filename in CWD
+npx go-drive <account> download <fileId> ./output.pdf  # saves to specific path
 ```
 Returns: `{ ok: true, path, size, mimeType }`
 
-**Note**: Cannot download Google Workspace files (Docs/Sheets/Slides). Use `export` instead.
+⚠️ Without a destination path, the file is saved to the **current working directory**. Use `$TEMP` or a specific path for agent workflows:
+```bash
+npx go-drive <account> download <fileId> "$TEMP/downloaded.pdf"
+```
+
+**Note**: Cannot download Google Workspace files (Docs/Sheets/Slides) — they have no binary content. Use `export` instead. Attempting to download one throws `DRIVE_EXPORT_REQUIRED`.
 
 #### export
 Export Google Workspace files to standard formats.
 ```bash
-npx go-drive marc@blegal.eu export <fileId> pdf
-npx go-drive marc@blegal.eu export <fileId> docx ./output.docx
-npx go-drive marc@blegal.eu export <fileId> xlsx
-npx go-drive marc@blegal.eu export <fileId> csv
+npx go-drive <account> export <fileId> pdf
+npx go-drive <account> export <fileId> docx ./output.docx
+npx go-drive <account> export <fileId> xlsx
 ```
-Formats: `pdf`, `docx`, `xlsx`, `pptx`, `csv`, `txt`, `html`
-
 Returns: `{ ok: true, path, size, mimeType }`
+
+⚠️ Without a destination path, the file is saved to the **current working directory**.
+
+**Export format matrix:**
+
+| Source type | Available formats |
+|-------------|-------------------|
+| Google Docs | `pdf`, `docx`, `txt`, `html` |
+| Google Sheets | `pdf`, `xlsx`, `csv` |
+| Google Slides | `pdf`, `pptx` |
+| Google Drawings | `pdf` |
+
+Not all combinations work — the table shows supported ones. Unsupported combos return `DRIVE_ERROR`.
 
 #### upload (WRITE)
 Upload a file.
 ```bash
-npx go-drive marc@blegal.eu upload ./report.pdf
-npx go-drive marc@blegal.eu upload ./report.pdf --folder=<folderId>
-npx go-drive marc@blegal.eu upload ./report.pdf --name="Q1 Report.pdf"
+npx go-drive <account> upload ./report.pdf
+npx go-drive <account> upload ./report.pdf --folder=<folderId>
+npx go-drive <account> upload ./report.pdf --name="Q1 Report.pdf"
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### mkdir (WRITE)
 Create a folder.
 ```bash
-npx go-drive marc@blegal.eu mkdir "New Folder"
-npx go-drive marc@blegal.eu mkdir "Subfolder" --parent=<folderId>
+npx go-drive <account> mkdir "New Folder"
+npx go-drive <account> mkdir "Subfolder" --parent=<folderId>
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### move (WRITE)
 Move a file to a different folder.
 ```bash
-npx go-drive marc@blegal.eu move <fileId> <newParentId>
+npx go-drive <account> move <fileId> <newParentId>
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### rename (WRITE)
 Rename a file.
 ```bash
-npx go-drive marc@blegal.eu rename <fileId> "new-name.pdf"
+npx go-drive <account> rename <fileId> "new-name.pdf"
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### copy (WRITE)
 Copy a file.
 ```bash
-npx go-drive marc@blegal.eu copy <fileId>
-npx go-drive marc@blegal.eu copy <fileId> --name="Copy of report" --parent=<folderId>
+npx go-drive <account> copy <fileId>
+npx go-drive <account> copy <fileId> --name="Copy of report" --parent=<folderId>
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
 
@@ -113,37 +139,41 @@ Without `--name`, the copy is named "Copy of \<original name\>". Without `--pare
 #### trash ⚠️ DESTRUCTIVE
 Trash a file. Requires `--confirm`.
 ```bash
-npx go-drive marc@blegal.eu trash <fileId> --confirm
+npx go-drive <account> trash <fileId> --confirm
 ```
 Returns: `{ ok: true, id, name }`
 
 #### permissions
 List sharing permissions on a file.
 ```bash
-npx go-drive marc@blegal.eu permissions <fileId>
+npx go-drive <account> permissions <fileId>
 ```
 Returns: `Array<{ id, type, role, emailAddress?, displayName? }>` (bare array)
 
-#### share ⚠️ DESTRUCTIVE (when type=anyone)
-Share a file. Requires `--confirm` when sharing with "anyone".
+#### share ⚠️ DESTRUCTIVE (when type=anyone or type=domain)
+Share a file. Requires `--confirm` when sharing with "anyone" or "domain" (exposes data broadly).
 ```bash
-# Share with specific user
-npx go-drive marc@blegal.eu share <fileId> --type=user --role=reader --email=other@example.com
+# Share with specific user (WRITE — no --confirm needed)
+npx go-drive <account> share <fileId> --type=user --role=reader --email=other@example.com
 
 # Share publicly (DESTRUCTIVE — needs --confirm)
-npx go-drive marc@blegal.eu share <fileId> --type=anyone --role=reader --confirm
+npx go-drive <account> share <fileId> --type=anyone --role=reader --confirm
 
-# Share with domain
-npx go-drive marc@blegal.eu share <fileId> --type=domain --role=reader --domain=example.com
+# Share with domain (DESTRUCTIVE — needs --confirm)
+npx go-drive <account> share <fileId> --type=domain --role=reader --domain=example.com --confirm
 ```
 Returns: `{ ok: true, id, name, webViewLink? }`
+
+**Roles:** `reader`, `commenter`, `writer`
 
 #### unshare ⚠️ DESTRUCTIVE
 Remove a permission. Requires `--confirm`.
 ```bash
-npx go-drive marc@blegal.eu unshare <fileId> <permissionId> --confirm
+npx go-drive <account> unshare <fileId> <permissionId> --confirm
 ```
 Returns: `{ ok: true, id, name }`
+
+Get the `permissionId` from the `permissions` command.
 
 ## Library API
 
@@ -154,16 +184,27 @@ import { listFiles, searchFiles, getFile, downloadFile, exportFile,
          trashFile, listPermissions, shareFile, unshareFile
 } from '@marcfargas/go-easy/drive';
 
-const auth = await getAuth('drive', 'marc@blegal.eu');
+const auth = await getAuth('drive', '<account>');
 
-// List & Search
-const files = await listFiles(auth, { folderId: 'folder-id', maxResults: 10 });
+// List with pagination
+const page1 = await listFiles(auth, { folderId: 'folder-id', maxResults: 50 });
+if (page1.nextPageToken) {
+  const page2 = await listFiles(auth, { folderId: 'folder-id', maxResults: 50, pageToken: page1.nextPageToken });
+}
+
+// Full-text search
 const results = await searchFiles(auth, { query: 'contract' });
 
-// Get & Download
+// Get metadata
 const file = await getFile(auth, 'file-id');
-const { data, name } = await downloadFile(auth, 'file-id');
+
+// Download (returns Buffer — library does NOT write to disk)
+const { data, name, mimeType } = await downloadFile(auth, 'file-id');
+// data is a Buffer — write it yourself: fs.writeFileSync('out.pdf', data)
+
+// Export (returns Buffer — library does NOT write to disk)
 const exported = await exportFile(auth, 'doc-id', 'pdf');
+// exported.data is a Buffer
 
 // Write operations
 const uploaded = await uploadFile(auth, './file.pdf', { folderId: 'folder-id' });
@@ -181,14 +222,21 @@ await unshareFile(auth, 'file-id', 'permission-id');
 const perms = await listPermissions(auth, 'file-id');
 ```
 
+**Library vs CLI difference:** `downloadFile` and `exportFile` return `{ data: Buffer, ... }` in the library. The CLI writes to disk and returns `{ path, size }`.
+
 ## Drive Query Syntax (for ls --query)
 
-Same as Drive API v3 query syntax:
+Same as Drive API v3 query syntax. **Shell quoting**: wrap the whole query in double quotes; use single quotes for string values inside:
+
+```bash
+npx go-drive <account> ls --query="name contains 'report'"
+npx go-drive <account> ls --query="mimeType = 'application/pdf' and name contains 'invoice'"
+```
+
+Common queries:
 - `name = 'report.pdf'` — exact name match
 - `name contains 'report'` — name contains text
 - `mimeType = 'application/pdf'` — by MIME type
-- `mimeType = 'application/vnd.google-apps.folder'` — folders only
-- `mimeType contains 'image/'` — all images
 - `modifiedTime > '2026-01-01'` — modified after date
 - `'me' in owners` — owned by me
 - `sharedWithMe` — shared with me
@@ -199,6 +247,17 @@ Combine with `and`/`or`:
 name contains 'report' and mimeType = 'application/pdf'
 ```
 
+### Google Workspace MIME types
+
+| Type | MIME type |
+|------|-----------|
+| Folder | `application/vnd.google-apps.folder` |
+| Document | `application/vnd.google-apps.document` |
+| Spreadsheet | `application/vnd.google-apps.spreadsheet` |
+| Presentation | `application/vnd.google-apps.presentation` |
+| Drawing | `application/vnd.google-apps.drawing` |
+| Form | `application/vnd.google-apps.form` |
+
 ## Types
 
 ```typescript
@@ -206,12 +265,12 @@ interface DriveFile {
   id: string;
   name: string;
   mimeType: string;
-  size?: number;           // not present for Google Docs/Sheets/Slides
+  size?: number;           // not present for Google Workspace files
   createdTime?: string;
   modifiedTime?: string;
   parents?: string[];
   webViewLink?: string;
-  driveId?: string;        // Shared Drive ID
+  driveId?: string;        // Shared Drive ID (present for Shared Drive files)
   shared?: boolean;
   trashed?: boolean;
 }
@@ -237,7 +296,7 @@ interface DrivePermission {
 | `QUOTA_EXCEEDED` | Drive API rate limit (429) — wait 30s and retry | 1 |
 | `SAFETY_BLOCKED` | Destructive op without `--confirm` | 2 |
 | `DRIVE_ERROR` | Other Drive API error | 1 |
-| `DRIVE_EXPORT_REQUIRED` | Tried to download a Google Workspace file — use export | 1 |
+| `DRIVE_EXPORT_REQUIRED` | Tried to download a Google Workspace file — use `export` | 1 |
 
 Auth errors include a `fix` field: `{ "error": "AUTH_NO_ACCOUNT", "fix": "npx go-easy auth add <email>" }`
 
