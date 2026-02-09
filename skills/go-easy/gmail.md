@@ -18,7 +18,11 @@ Safety-blocked operations (destructive without `--confirm`) exit with code 2.
 
 ### Available Accounts
 
-Run `npx go-easy auth list` to see configured accounts.
+```bash
+npx go-easy auth list
+```
+
+If an account is missing, add it: `npx go-easy auth add <email>` (see [SKILL.md](SKILL.md) for the full auth workflow).
 
 ### Body Content Flags
 

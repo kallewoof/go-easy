@@ -227,11 +227,24 @@ interface DrivePermission {
 
 ## Error Codes
 
-| Code | Meaning |
-|------|---------|
-| `AUTH_ERROR` | Token expired/missing |
-| `NOT_FOUND` | File not found (404) |
-| `QUOTA_EXCEEDED` | Drive API rate limit (429) |
-| `SAFETY_BLOCKED` | Destructive op without `--confirm` |
-| `DRIVE_ERROR` | Other Drive API error |
-| `DRIVE_EXPORT_REQUIRED` | Tried to download a Google Workspace file — use export |
+| Code | Meaning | Exit Code |
+|------|---------|-----------|
+| `AUTH_NO_ACCOUNT` | Account not configured | 1 |
+| `AUTH_MISSING_SCOPE` | Account exists but missing Drive scope | 1 |
+| `AUTH_TOKEN_REVOKED` | Refresh token revoked — re-auth needed | 1 |
+| `AUTH_NO_CREDENTIALS` | OAuth credentials missing | 1 |
+| `NOT_FOUND` | File not found (404) | 1 |
+| `QUOTA_EXCEEDED` | Drive API rate limit (429) — wait 30s and retry | 1 |
+| `SAFETY_BLOCKED` | Destructive op without `--confirm` | 2 |
+| `DRIVE_ERROR` | Other Drive API error | 1 |
+| `DRIVE_EXPORT_REQUIRED` | Tried to download a Google Workspace file — use export | 1 |
+
+Auth errors include a `fix` field: `{ "error": "AUTH_NO_ACCOUNT", "fix": "npx go-easy auth add <email>" }`
+
+## Available Accounts
+
+```bash
+npx go-easy auth list
+```
+
+If an account is missing, add it: `npx go-easy auth add <email>` (see [SKILL.md](SKILL.md) for the full auth workflow).

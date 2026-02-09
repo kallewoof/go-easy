@@ -303,14 +303,23 @@ interface FreeBusyResult {
 
 ## Error Codes
 
-| Code | Meaning |
-|------|---------|
-| `AUTH_ERROR` | Token expired/missing |
-| `NOT_FOUND` | Event not found (404) |
-| `QUOTA_EXCEEDED` | Calendar API rate limit (429) |
-| `SAFETY_BLOCKED` | Destructive op without `--confirm` |
-| `CALENDAR_ERROR` | Other Calendar API error |
+| Code | Meaning | Exit Code |
+|------|---------|-----------|
+| `AUTH_NO_ACCOUNT` | Account not configured | 1 |
+| `AUTH_MISSING_SCOPE` | Account exists but missing Calendar scope | 1 |
+| `AUTH_TOKEN_REVOKED` | Refresh token revoked — re-auth needed | 1 |
+| `AUTH_NO_CREDENTIALS` | OAuth credentials missing | 1 |
+| `NOT_FOUND` | Event not found (404) | 1 |
+| `QUOTA_EXCEEDED` | Calendar API rate limit (429) — wait 30s and retry | 1 |
+| `SAFETY_BLOCKED` | Destructive op without `--confirm` | 2 |
+| `CALENDAR_ERROR` | Other Calendar API error | 1 |
+
+Auth errors include a `fix` field: `{ "error": "AUTH_NO_ACCOUNT", "fix": "npx go-easy auth add <email>" }`
 
 ## Available Accounts
 
-Calendar tokens at `~/.gccli/accounts.json`. Currently: `marc@blegal.eu` only.
+```bash
+npx go-easy auth list
+```
+
+If an account is missing, add it: `npx go-easy auth add <email>` (see [SKILL.md](SKILL.md) for the full auth workflow).
