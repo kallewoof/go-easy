@@ -15,6 +15,10 @@
 export { getAuth, listAccounts, listAllAccounts, clearAuthCache } from './auth.js';
 export type { GoogleService } from './auth.js';
 
+// Auth Flow
+export { authAdd } from './auth-flow.js';
+export type { AuthFlowStatus } from './auth-flow.js';
+
 // Auth Store
 export type {
   GoEasyAccount,

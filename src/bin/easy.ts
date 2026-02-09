@@ -20,6 +20,7 @@ import {
   removeAccount,
 } from '../auth-store.js';
 import type { GoEasyAccount } from '../auth-store.js';
+import { authAdd as authAddFlow } from '../auth-flow.js';
 import { GoEasyError, SafetyError } from '../errors.js';
 import { setSafetyContext } from '../safety.js';
 
@@ -105,42 +106,8 @@ async function authAdd(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  // Check if already fully configured
-  const store = await readAccountStore();
-  if (store) {
-    const account = findAccount(store, email);
-    if (account?.tokens.combined) {
-      // Already has combined token — check if all scopes present
-      const { SCOPES } = await import('../scopes.js');
-      const allScopes = Object.values(SCOPES);
-      const hasAll = allScopes.every((s) =>
-        account.tokens.combined!.scopes.includes(s)
-      );
-      if (hasAll) {
-        console.log(
-          JSON.stringify({
-            status: 'complete',
-            email: account.email,
-            scopes: account.tokens.combined.scopes,
-            message: 'Account already configured with all scopes',
-          })
-        );
-        return;
-      }
-    }
-  }
-
-  // Phase 2: Start auth flow (not yet implemented)
-  console.log(
-    JSON.stringify({
-      status: 'not_implemented',
-      message:
-        'Auth flow not yet implemented (Phase 2). ' +
-        'Use legacy CLI tools (gmcli/gdcli/gccli) to authorize, then run: npx go-easy auth list',
-      email,
-    })
-  );
-  process.exit(1);
+  const result = await authAddFlow(email);
+  console.log(JSON.stringify(result, null, 2));
 }
 
 // ─── auth remove ───────────────────────────────────────────
