@@ -13,3 +13,8 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Working artifacts
+experiments/
+reviews/
+tmp-*
