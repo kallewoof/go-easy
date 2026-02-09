@@ -3,11 +3,11 @@
 > Google APIs made easy — Gmail, Drive & Calendar. For AI agents and humans.
 
 Thin TypeScript wrappers over Google's individual `@googleapis/*` packages with:
-- **Simple auth** — multi-account OAuth2 with token import from existing tools
+- **Own auth** — unified OAuth2 with combined tokens, agent-compatible two-phase flow
 - **Agent-friendly types** — structured `GmailMessage`, `DriveFile`, `CalendarEvent`
 - **Safety guards** — destructive operations (send, share, delete) require explicit confirmation
 - **JSON gateways** — CLI tools that always output structured JSON
-- **Progressive skills** — designed for AI agent consumption (pi coding agent)
+- **File-based body** — email bodies read from files, not CLI args (no shell escaping issues)
 
 ## Installation
 
@@ -25,41 +25,48 @@ Requires **Node.js ≥ 20**.
 
 ## Auth Setup
 
-go-easy uses OAuth2 tokens stored per-service. Each service reads from its own token store:
+go-easy manages its own OAuth2 tokens in `~/.go-easy/`.
 
-| Service | Token store |
-|---|---|
-| Gmail | `~/.gmcli/accounts.json` |
-| Drive | `~/.gdcli/accounts.json` |
-| Calendar | `~/.gccli/accounts.json` |
+### Prerequisites
 
-Each `accounts.json` file contains an array of accounts:
+1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable the Gmail, Drive, and Calendar APIs
+3. Create OAuth2 credentials (Desktop application type)
+4. Save credentials to `~/.go-easy/credentials.json`:
 
 ```json
-[
-  {
-    "email": "you@example.com",
-    "oauth2": {
-      "clientId": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-      "clientSecret": "YOUR_CLIENT_SECRET",
-      "refreshToken": "YOUR_REFRESH_TOKEN"
-    }
-  }
-]
+{
+  "clientId": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+  "clientSecret": "YOUR_CLIENT_SECRET"
+}
 ```
 
-To obtain credentials:
-1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
-2. Enable the Gmail, Drive, and/or Calendar APIs
-3. Create OAuth2 credentials (Desktop application)
-4. Use the OAuth2 playground or a local flow to obtain a refresh token
-5. Place the token in the appropriate `accounts.json` file
+### Add an account
+
+```bash
+npx go-easy auth add you@example.com
+# → { "status": "started", "authUrl": "https://accounts.google.com/..." }
+# Open the URL, authorize, then poll:
+npx go-easy auth add you@example.com
+# → { "status": "complete", "email": "you@example.com", "scopes": ["gmail", "drive", "calendar"] }
+```
+
+One combined token covers Gmail + Drive + Calendar. The flow is agent-compatible — two separate CLI calls (start + poll), no streaming stdout needed.
+
+### Manage accounts
+
+```bash
+npx go-easy auth list                         # List configured accounts
+npx go-easy auth add you@example.com          # Add or upgrade account
+npx go-easy auth remove you@example.com --confirm  # Remove account
+```
 
 ## Quick Start
 
 ```ts
 import { getAuth } from '@marcfargas/go-easy/auth';
 import { search, send } from '@marcfargas/go-easy/gmail';
+import { setSafetyContext } from '@marcfargas/go-easy';
 
 const auth = await getAuth('gmail', 'you@example.com');
 
@@ -68,8 +75,6 @@ const results = await search(auth, { query: 'is:unread from:client' });
 console.log(results.items);
 
 // Send (DESTRUCTIVE — requires safety context)
-import { setSafetyContext } from '@marcfargas/go-easy';
-
 setSafetyContext({
   confirm: async (op) => {
     console.log(`⚠️ ${op.description}`);
@@ -80,7 +85,7 @@ setSafetyContext({
 await send(auth, {
   to: 'client@example.com',
   subject: 'Invoice attached',
-  html: '<h1>Invoice</h1><p>Please find attached.</p>',
+  markdown: '# Invoice\n\nPlease find attached.',
   attachments: ['./invoice.pdf'],
 });
 ```
@@ -93,7 +98,8 @@ All gateway CLIs output JSON to stdout and work via `npx`:
 # Gmail
 npx go-gmail you@example.com search "is:unread" --max=10
 npx go-gmail you@example.com get <messageId>
-npx go-gmail you@example.com send --to=x@y.com --subject="Hi" --body="Hello" --confirm
+npx go-gmail you@example.com reply <messageId> --body-text-file=reply.txt --confirm
+npx go-gmail you@example.com send --to=x@y.com --subject="Hi" --body-text-file=body.txt --confirm
 
 # Drive
 npx go-drive you@example.com ls
@@ -105,6 +111,8 @@ npx go-calendar you@example.com events primary --from=2026-02-01T00:00:00Z
 npx go-calendar you@example.com create primary --summary="Meeting" --start=... --end=...
 npx go-calendar you@example.com freebusy primary --from=... --to=...
 ```
+
+Body content is always read from files (`--body-text-file`, `--body-html-file`, `--body-md-file`), never passed inline.
 
 Destructive operations require `--confirm`. Without it, they show what *would* happen and exit with code 2.
 
@@ -131,8 +139,8 @@ Destructive operations require `--confirm`. Without it, they show what *would* h
 | `batchModifyLabels` | WRITE | Add/remove labels on multiple messages |
 | `markdownToHtml` | — | Convert Markdown to email-safe HTML |
 | `send` | ⚠️ DESTRUCTIVE | Send a new email (supports `markdown` option) |
-| `reply` | ⚠️ DESTRUCTIVE | Reply to a message (supports `markdown` option) |
-| `forward` | WRITE / ⚠️ DESTRUCTIVE | Forward as draft (default) or send (`sendNow`). Attachment filtering, `markdown`. |
+| `reply` | ⚠️ DESTRUCTIVE | Reply / reply-all to a message |
+| `forward` | WRITE / ⚠️ DESTRUCTIVE | Forward as draft (default) or send (`sendNow`). Attachment filtering. |
 | `sendDraft` | ⚠️ DESTRUCTIVE | Send an existing draft |
 
 ### Drive
@@ -162,8 +170,8 @@ Destructive operations require `--confirm`. Without it, they show what *would* h
 | `listEvents` | READ | List events with time range, search, pagination |
 | `getEvent` | READ | Get a single event by ID |
 | `queryFreeBusy` | READ | Check availability across calendars |
-| `createEvent` | WRITE | Create an event (with attendees, all-day, location) |
-| `updateEvent` | WRITE | Update an existing event |
+| `createEvent` | WRITE | Create an event (with attendees, all-day, location, OOO, focus time) |
+| `updateEvent` | WRITE | Update an existing event (full replace) |
 | `deleteEvent` | ⚠️ DESTRUCTIVE | Delete an event (warns about attendee cancellation) |
 
 ## Safety Model
@@ -184,23 +192,22 @@ Without one, all destructive operations are blocked by default.
 go-easy uses **subpath exports** — import only what you need:
 
 ```ts
-// Subpath imports (recommended)
 import { getAuth } from '@marcfargas/go-easy/auth';
 import { search, send } from '@marcfargas/go-easy/gmail';
-import { listFiles, upload } from '@marcfargas/go-easy/drive';
+import { listFiles, uploadFile } from '@marcfargas/go-easy/drive';
 import { listEvents, createEvent } from '@marcfargas/go-easy/calendar';
-import { setSafetyContext } from '@marcfargas/go-easy';         // root: safety, errors, shared utils
+import { setSafetyContext } from '@marcfargas/go-easy';
 ```
 
 | Import path | What's in it |
 |---|---|
 | `@marcfargas/go-easy` | Safety context, errors, plus `gmail`/`drive`/`calendar` as namespaces |
-| `@marcfargas/go-easy/auth` | `getAuth`, `listAccounts`, `clearAuthCache` |
+| `@marcfargas/go-easy/auth` | `getAuth`, `listAccounts`, `listAllAccounts`, `clearAuthCache` |
+| `@marcfargas/go-easy/auth-store` | `readAccountStore`, `writeAccountStore`, `findAccount`, etc. |
+| `@marcfargas/go-easy/scopes` | `SCOPES`, `ALL_SCOPES`, `scopeToService` |
 | `@marcfargas/go-easy/gmail` | All Gmail operations |
 | `@marcfargas/go-easy/drive` | All Drive operations |
 | `@marcfargas/go-easy/calendar` | All Calendar operations |
-
-The root export also re-exports each service as a namespace, so `import { gmail } from '@marcfargas/go-easy'` works if you prefer a single import.
 
 ## Development
 
@@ -211,10 +218,6 @@ npm test           # run tests (vitest)
 npm run lint       # type-check without emitting
 npm run dev        # watch mode
 ```
-
-## Contributing
-
-Found a bug or have a feature request? [Open an issue](https://github.com/marcfargas/go-easy/issues).
 
 ## License
 
