@@ -34,16 +34,17 @@ function usage(): never {
     error: 'USAGE',
     message: 'go-gmail <account> <command> [args...]',
     commands: {
-      search: 'go-gmail <account> search "<query>" [--max=N]',
+      search: 'go-gmail <account> search "<query>" [--max=N] [--page-token=<token>]',
       get: 'go-gmail <account> get <messageId>',
       thread: 'go-gmail <account> thread <threadId>',
       labels: 'go-gmail <account> labels',
-      send: 'go-gmail <account> send --to=<addr> --subject="..." --body-text-file=body.txt [--body-html-file=body.html] [--confirm]',
+      send: 'go-gmail <account> send --to=<addr> --subject="..." --body-text-file=body.txt [--cc=<addr>] [--bcc=<addr>] [--confirm]',
+      reply: 'go-gmail <account> reply <messageId> --body-text-file=reply.txt [--reply-all] --confirm',
       forward: 'go-gmail <account> forward <messageId> --to=<addr> [--body-text-file=note.txt] [--exclude=file1,file2] [--send-now --confirm]',
-      draft: 'go-gmail <account> draft --to=<addr> --subject="..." --body-text-file=body.txt [--in-reply-to=<messageId>]',
+      draft: 'go-gmail <account> draft --to=<addr> --subject="..." --body-text-file=body.txt [--cc=<addr>] [--bcc=<addr>] [--in-reply-to=<messageId>]',
       'send-draft': 'go-gmail <account> send-draft <draftId> [--confirm]',
-      drafts: 'go-gmail <account> drafts [--max=N]',
-      'batch-label': 'go-gmail <account> batch-label --ids=id1,id2 --add=LABEL --remove=LABEL',
+      drafts: 'go-gmail <account> drafts [--max=N] [--page-token=<token>]',
+      'batch-label': 'go-gmail <account> batch-label --ids=id1,id2 --add=LABEL_ID --remove=LABEL_ID',
       attachment: 'go-gmail <account> attachment <messageId> <attachmentId>',
       profile: 'go-gmail <account> profile',
     },
@@ -138,6 +139,7 @@ async function main() {
         result = await gmail.search(auth, {
           query: pos[0] ?? '',
           maxResults: flags.max ? parseInt(flags.max) : undefined,
+          pageToken: flags['page-token'],
         });
         break;
 
@@ -165,6 +167,18 @@ async function main() {
           attachments: flags.attach?.split(','),
         });
         break;
+
+      case 'reply': {
+        if (!pos[0]) usage();
+        const origMsg = await gmail.getMessage(auth, pos[0]);
+        result = await gmail.reply(auth, {
+          threadId: origMsg.threadId,
+          messageId: pos[0],
+          ...readBodyFlags(flags),
+          replyAll: 'reply-all' in flags,
+        });
+        break;
+      }
 
       case 'forward':
         if (!pos[0]) usage();
@@ -197,6 +211,8 @@ async function main() {
 
         result = await gmail.createDraft(auth, {
           to: flags.to ?? '',
+          cc: flags.cc,
+          bcc: flags.bcc,
           subject: flags.subject ?? '',
           ...readBodyFlags(flags),
           threadId,
@@ -211,7 +227,11 @@ async function main() {
         break;
 
       case 'drafts':
-        result = await gmail.listDrafts(auth, flags.max ? parseInt(flags.max) : undefined);
+        result = await gmail.listDrafts(
+          auth,
+          flags.max ? parseInt(flags.max) : undefined,
+          flags['page-token'],
+        );
         break;
 
       case 'batch-label':

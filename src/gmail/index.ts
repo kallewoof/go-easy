@@ -535,7 +535,8 @@ export async function sendDraft(
  */
 export async function listDrafts(
   auth: OAuth2Client,
-  maxResults = 20
+  maxResults = 20,
+  pageToken?: string
 ): Promise<ListResult<GmailDraft>> {
   const gmail = gmailApi(auth);
 
@@ -543,6 +544,7 @@ export async function listDrafts(
     const res = await gmail.users.drafts.list({
       userId: 'me',
       maxResults,
+      pageToken,
     });
 
     const drafts = await Promise.all(

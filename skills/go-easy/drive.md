@@ -84,18 +84,21 @@ Create a folder.
 npx go-drive marc@blegal.eu mkdir "New Folder"
 npx go-drive marc@blegal.eu mkdir "Subfolder" --parent=<folderId>
 ```
+Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### move (WRITE)
 Move a file to a different folder.
 ```bash
 npx go-drive marc@blegal.eu move <fileId> <newParentId>
 ```
+Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### rename (WRITE)
 Rename a file.
 ```bash
 npx go-drive marc@blegal.eu rename <fileId> "new-name.pdf"
 ```
+Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### copy (WRITE)
 Copy a file.
@@ -103,19 +106,23 @@ Copy a file.
 npx go-drive marc@blegal.eu copy <fileId>
 npx go-drive marc@blegal.eu copy <fileId> --name="Copy of report" --parent=<folderId>
 ```
+Returns: `{ ok: true, id, name, webViewLink? }`
+
+Without `--name`, the copy is named "Copy of \<original name\>". Without `--parent`, it stays in the same folder.
 
 #### trash ⚠️ DESTRUCTIVE
 Trash a file. Requires `--confirm`.
 ```bash
 npx go-drive marc@blegal.eu trash <fileId> --confirm
 ```
+Returns: `{ ok: true, id, name }`
 
 #### permissions
 List sharing permissions on a file.
 ```bash
 npx go-drive marc@blegal.eu permissions <fileId>
 ```
-Returns: `[{ id, type, role, emailAddress?, displayName? }]`
+Returns: `Array<{ id, type, role, emailAddress?, displayName? }>` (bare array)
 
 #### share ⚠️ DESTRUCTIVE (when type=anyone)
 Share a file. Requires `--confirm` when sharing with "anyone".
@@ -129,12 +136,14 @@ npx go-drive marc@blegal.eu share <fileId> --type=anyone --role=reader --confirm
 # Share with domain
 npx go-drive marc@blegal.eu share <fileId> --type=domain --role=reader --domain=example.com
 ```
+Returns: `{ ok: true, id, name, webViewLink? }`
 
 #### unshare ⚠️ DESTRUCTIVE
 Remove a permission. Requires `--confirm`.
 ```bash
 npx go-drive marc@blegal.eu unshare <fileId> <permissionId> --confirm
 ```
+Returns: `{ ok: true, id, name }`
 
 ## Library API
 

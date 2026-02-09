@@ -121,13 +121,24 @@ npx go-calendar marc@blegal.eu create primary \
 Returns: `{ ok: true, id, htmlLink? }`
 
 #### update (WRITE)
-Update an existing event. Provide all fields (replaces the event).
+Update an existing event. This is a **full replace** — any field you omit will be cleared.
+
+⚠️ If the event has attendees, update notifications will be sent automatically.
+
+**Best practice**: Fetch the event first with `event`, then pass back all fields with your changes.
+
 ```bash
+# 1. Fetch current state
+npx go-calendar marc@blegal.eu event primary <eventId>
+# 2. Update with all fields preserved
 npx go-calendar marc@blegal.eu update primary <eventId> \
   --summary="Updated Meeting" \
   --start=2026-02-10T11:00:00+01:00 \
-  --end=2026-02-10T12:00:00+01:00
+  --end=2026-02-10T12:00:00+01:00 \
+  --description="Weekly sync" \
+  --attendees=alice@example.com,bob@example.com
 ```
+Returns: `{ ok: true, id, htmlLink? }`
 
 #### delete ⚠️ DESTRUCTIVE
 Delete an event. Requires `--confirm`.
