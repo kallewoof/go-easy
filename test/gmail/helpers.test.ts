@@ -8,6 +8,8 @@ import {
   base64Decode,
   base64UrlEncode,
   rfc2047Encode,
+  rfc2047EncodeAddress,
+  rfc2047EncodeAddressList,
   parseMessage,
   buildMimeMessage,
   buildForwardMime,
@@ -305,6 +307,56 @@ describe('rfc2047Encode', () => {
   });
 });
 
+describe('rfc2047EncodeAddress', () => {
+  it('returns plain email addresses unchanged', () => {
+    expect(rfc2047EncodeAddress('julia@example.com')).toBe('julia@example.com');
+  });
+
+  it('returns ASCII display names unchanged', () => {
+    expect(rfc2047EncodeAddress('John Smith <john@example.com>')).toBe(
+      'John Smith <john@example.com>'
+    );
+  });
+
+  it('encodes non-ASCII display names', () => {
+    const result = rfc2047EncodeAddress('Júlia Fargas Esteve <juliaf@blegal.eu>');
+    expect(result).toMatch(/^=\?UTF-8\?B\?.+\?= <juliaf@blegal\.eu>$/);
+    // Decode and verify the display name
+    const base64Part = result.match(/=\?UTF-8\?B\?(.+)\?=/)![1];
+    expect(Buffer.from(base64Part, 'base64').toString('utf-8')).toBe('Júlia Fargas Esteve');
+  });
+
+  it('handles quoted display names with non-ASCII', () => {
+    const result = rfc2047EncodeAddress('"José García" <jose@example.com>');
+    expect(result).toMatch(/^=\?UTF-8\?B\?.+\?= <jose@example\.com>$/);
+    const base64Part = result.match(/=\?UTF-8\?B\?(.+)\?=/)![1];
+    expect(Buffer.from(base64Part, 'base64').toString('utf-8')).toBe('José García');
+  });
+
+  it('handles trimming whitespace', () => {
+    expect(rfc2047EncodeAddress('  alice@example.com  ')).toBe('alice@example.com');
+  });
+});
+
+describe('rfc2047EncodeAddressList', () => {
+  it('encodes a comma-separated list of addresses', () => {
+    const result = rfc2047EncodeAddressList(
+      'Júlia Fargas <juliaf@blegal.eu>, Marc Test <marc@blegal.eu>'
+    );
+    expect(result).toMatch(/=\?UTF-8\?B\?.+\?= <juliaf@blegal\.eu>/);
+    expect(result).toContain('Marc Test <marc@blegal.eu>');
+  });
+
+  it('returns empty string unchanged', () => {
+    expect(rfc2047EncodeAddressList('')).toBe('');
+  });
+
+  it('handles single address', () => {
+    const result = rfc2047EncodeAddressList('Júlia <j@test.com>');
+    expect(result).toMatch(/^=\?UTF-8\?B\?.+\?= <j@test\.com>$/);
+  });
+});
+
 describe('buildMimeMessage', () => {
   it('builds a plain text message', async () => {
     const mime = await buildMimeMessage('me@test.com', {
@@ -404,6 +456,41 @@ describe('buildMimeMessage', () => {
     });
 
     expect(mime).toContain('Subject: RE: Invoice #1234');
+  });
+
+  it('RFC 2047 encodes non-ASCII display names in To header', async () => {
+    const mime = await buildMimeMessage('me@test.com', {
+      to: 'Júlia Fargas Esteve <juliaf@blegal.eu>',
+      subject: 'Test',
+      body: 'Hello',
+    });
+
+    // Should NOT contain raw non-ASCII in the To header
+    expect(mime).not.toContain('To: Júlia');
+    // Should contain RFC 2047 encoded display name
+    expect(mime).toMatch(/To: =\?UTF-8\?B\?.+\?= <juliaf@blegal\.eu>/);
+  });
+
+  it('RFC 2047 encodes non-ASCII display names in Cc header', async () => {
+    const mime = await buildMimeMessage('me@test.com', {
+      to: 'a@test.com',
+      cc: 'José García <jose@test.com>',
+      subject: 'Test',
+      body: 'Hello',
+    });
+
+    expect(mime).not.toContain('Cc: José');
+    expect(mime).toMatch(/Cc: =\?UTF-8\?B\?.+\?= <jose@test\.com>/);
+  });
+
+  it('leaves ASCII display names in To header unencoded', async () => {
+    const mime = await buildMimeMessage('me@test.com', {
+      to: 'John Smith <john@test.com>',
+      subject: 'Test',
+      body: 'Hello',
+    });
+
+    expect(mime).toContain('To: John Smith <john@test.com>');
   });
 });
 

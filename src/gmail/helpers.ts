@@ -114,6 +114,36 @@ export function rfc2047Encode(value: string): string {
 }
 
 /**
+ * RFC 2047 encode the display name portion of a single email address.
+ * "Júlia Fargas <julia@example.com>" → "=?UTF-8?B?...?= <julia@example.com>"
+ * Plain addresses like "julia@example.com" are returned unchanged.
+ */
+export function rfc2047EncodeAddress(address: string): string {
+  const trimmed = address.trim();
+  // Match "Display Name <email@example.com>" or "\"Display Name\" <email>"
+  const match = trimmed.match(/^"?(.+?)"?\s*<([^>]+)>$/);
+  if (match) {
+    const [, displayName, email] = match;
+    const encodedName = rfc2047Encode(displayName.trim());
+    return `${encodedName} <${email}>`;
+  }
+  // Just an email address, no encoding needed
+  return trimmed;
+}
+
+/**
+ * RFC 2047 encode a comma-separated list of email addresses.
+ * Each display name is encoded individually if it contains non-ASCII chars.
+ */
+export function rfc2047EncodeAddressList(addresses: string): string {
+  if (!addresses) return addresses;
+  return addresses
+    .split(',')
+    .map((a) => rfc2047EncodeAddress(a))
+    .join(', ');
+}
+
+/**
  * Parse a raw Gmail API message into our GmailMessage shape.
  */
 export function parseMessage(raw: gmail_v1.Schema$Message): GmailMessage {
@@ -164,10 +194,10 @@ export async function buildMimeMessage(
   const hasHtml = !!opts.html;
 
   let headers = [
-    `From: ${from}`,
-    `To: ${to}`,
-    ...(cc ? [`Cc: ${cc}`] : []),
-    ...(bcc ? [`Bcc: ${bcc}`] : []),
+    `From: ${rfc2047EncodeAddress(from)}`,
+    `To: ${rfc2047EncodeAddressList(to)}`,
+    ...(cc ? [`Cc: ${rfc2047EncodeAddressList(cc)}`] : []),
+    ...(bcc ? [`Bcc: ${rfc2047EncodeAddressList(bcc)}`] : []),
     `Subject: ${rfc2047Encode(opts.subject)}`,
     'MIME-Version: 1.0',
   ];
@@ -287,8 +317,8 @@ export async function buildForwardMime(
       : undefined;
 
   let headers = [
-    `From: ${from}`,
-    `To: ${to}`,
+    `From: ${rfc2047EncodeAddress(from)}`,
+    `To: ${rfc2047EncodeAddressList(to)}`,
     `Subject: ${rfc2047Encode(subject)}`,
     'MIME-Version: 1.0',
   ];
