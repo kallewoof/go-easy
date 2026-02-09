@@ -10,7 +10,6 @@
 
 import {
   listAllAccounts,
-  migrateFromLegacy,
   clearAuthCache,
 } from '../auth.js';
 import {
@@ -86,30 +85,8 @@ async function main(): Promise<void> {
 // ─── auth list ─────────────────────────────────────────────
 
 async function authList(): Promise<void> {
-  // Check if we need to migrate
-  let store = await readAccountStore();
-  let migrationResult = null;
-
-  if (!store) {
-    // Try migration from legacy stores
-    migrationResult = await migrateFromLegacy();
-    if (migrationResult.migrated) {
-      store = await readAccountStore();
-    }
-  }
-
   const accounts = await listAllAccounts();
-
-  const output: Record<string, unknown> = { accounts };
-  if (migrationResult?.migrated) {
-    output.migrated = true;
-    output.migratedAccounts = migrationResult.accounts;
-  }
-  if (migrationResult?.warnings && migrationResult.warnings.length > 0) {
-    output.warnings = migrationResult.warnings;
-  }
-
-  console.log(JSON.stringify(output, null, 2));
+  console.log(JSON.stringify({ accounts }, null, 2));
 }
 
 // ─── auth add ──────────────────────────────────────────────

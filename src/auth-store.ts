@@ -3,15 +3,13 @@
  *
  * Responsibilities:
  *   - Read/write accounts.json (v1 schema, atomic writes)
- *   - Migrate from legacy CLI stores (~/.gmcli, ~/.gdcli, ~/.gccli)
  *   - File permissions (0o700 dir, 0o600 files)
  *   - Provide typed account/token resolution
  *
  * Does NOT handle OAuth flows — that's auth-flow.ts (Phase 2).
  */
 
-import { readFile, writeFile, rename, mkdir, chmod, access, constants } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFile, writeFile, rename, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { SCOPES } from './scopes.js';
@@ -35,7 +33,6 @@ export interface GoEasyAccount {
     calendar?: OAuthToken;
   };
   addedAt: string;
-  migratedFrom?: string[];
 }
 
 export interface AccountStore {
@@ -48,29 +45,12 @@ export interface OAuthCredentials {
   clientSecret: string;
 }
 
-/** Shape of a legacy CLI account entry */
-interface LegacyAccountEntry {
-  email: string;
-  oauth2: {
-    clientId: string;
-    clientSecret: string;
-    refreshToken: string;
-  };
-}
-
 // ─── Paths ─────────────────────────────────────────────────
 
 const GO_EASY_DIR = join(homedir(), '.go-easy');
 const ACCOUNTS_FILE = join(GO_EASY_DIR, 'accounts.json');
 const CREDENTIALS_FILE = join(GO_EASY_DIR, 'credentials.json');
 const PENDING_DIR = join(GO_EASY_DIR, 'pending');
-
-/** Legacy CLI config dirs */
-const LEGACY_DIRS: Record<GoogleService, string> = {
-  gmail: '.gmcli',
-  drive: '.gdcli',
-  calendar: '.gccli',
-};
 
 // ─── Public API ────────────────────────────────────────────
 
@@ -157,7 +137,6 @@ export function findAccount(
 
 /**
  * Resolve the token for a specific service from an account.
- * Returns the refreshToken + clientId/clientSecret ready to use.
  *
  * Priority: combined (if it has the scope) > per-service token.
  */
@@ -176,7 +155,7 @@ export function resolveToken(
       };
     }
     // Combined exists but lacks this scope — don't fall through to per-service
-    // if per-service tokens were deleted after upgrade. Return null.
+    // (per-service tokens are deleted after upgrade per D1)
   }
 
   // 2. Try per-service token
@@ -226,166 +205,6 @@ export function removeAccount(store: AccountStore, email: string): boolean {
   if (idx < 0) return false;
   store.accounts.splice(idx, 1);
   return true;
-}
-
-// ─── Migration ─────────────────────────────────────────────
-
-export interface MigrationResult {
-  migrated: boolean;
-  accounts: Array<{ email: string; services: GoogleService[] }>;
-  warnings: string[];
-}
-
-/**
- * Migrate from legacy CLI stores to the new unified store.
- *
- * Rules:
- *   - Reads ~/.gmcli/, ~/.gdcli/, ~/.gccli/ accounts.json files
- *   - Merges by email (normalized to lowercase)
- *   - Copies credentials.json if not already present
- *   - Never modifies legacy files
- *   - If one legacy store fails, imports what it can + warns
- *   - Returns what was migrated
- */
-export async function migrateFromLegacy(): Promise<MigrationResult> {
-  const result: MigrationResult = { migrated: false, accounts: [], warnings: [] };
-
-  // Read all legacy stores
-  const legacyData = new Map<GoogleService, LegacyAccountEntry[]>();
-  const legacyCreds: OAuthCredentials[] = [];
-
-  for (const [service, dirName] of Object.entries(LEGACY_DIRS) as [GoogleService, string][]) {
-    const dir = join(homedir(), dirName);
-    try {
-      const raw = await readFile(join(dir, 'accounts.json'), 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        result.warnings.push(`${dirName}/accounts.json: not an array, skipping`);
-        continue;
-      }
-      // Validate entries
-      const valid = parsed.filter(
-        (e: unknown): e is LegacyAccountEntry =>
-          typeof e === 'object' && e !== null &&
-          typeof (e as LegacyAccountEntry).email === 'string' &&
-          typeof (e as LegacyAccountEntry).oauth2?.refreshToken === 'string'
-      );
-      if (valid.length === 0) {
-        result.warnings.push(`${dirName}/accounts.json: no valid accounts found`);
-        continue;
-      }
-      legacyData.set(service, valid);
-
-      // Collect credentials
-      if (valid[0]?.oauth2?.clientId) {
-        legacyCreds.push({
-          clientId: valid[0].oauth2.clientId,
-          clientSecret: valid[0].oauth2.clientSecret,
-        });
-      }
-    } catch (err: unknown) {
-      if (isEnoent(err)) {
-        // Legacy dir doesn't exist — not a warning, just skip
-        continue;
-      }
-      result.warnings.push(`${dirName}/accounts.json: ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    // Also try to read credentials.json from legacy dir
-    try {
-      const credRaw = await readFile(join(dir, 'credentials.json'), 'utf-8');
-      const cred = JSON.parse(credRaw);
-      if (cred?.clientId && cred?.clientSecret) {
-        legacyCreds.push({ clientId: cred.clientId, clientSecret: cred.clientSecret });
-      }
-    } catch {
-      // Credentials file missing — not critical
-    }
-  }
-
-  if (legacyData.size === 0) {
-    return result;
-  }
-
-  // Verify all credentials share the same clientId
-  const clientIds = new Set(legacyCreds.map((c) => c.clientId));
-  if (clientIds.size > 1) {
-    result.warnings.push(
-      `Legacy stores use different OAuth clients (${[...clientIds].join(', ')}). ` +
-      `Migration will use the first one found. Tokens from other clients may not work.`
-    );
-  }
-
-  // Write credentials.json if we don't have one
-  const existingCreds = await readCredentials();
-  if (!existingCreds && legacyCreds.length > 0) {
-    await writeCredentials(legacyCreds[0]);
-  }
-
-  // Build unified store
-  let store = await readAccountStore() ?? { version: 1 as const, accounts: [] };
-  const accountServiceMap = new Map<string, Set<GoogleService>>();
-
-  for (const [service, entries] of legacyData) {
-    for (const entry of entries) {
-      const email = entry.email.trim().toLowerCase();
-      const now = new Date().toISOString();
-
-      const token: OAuthToken = {
-        refreshToken: entry.oauth2.refreshToken,
-        scopes: [SCOPES[service]],
-        grantedAt: now, // We don't know the real date
-      };
-
-      const newAccount: GoEasyAccount = {
-        email,
-        tokens: { [service]: token },
-        addedAt: now,
-        migratedFrom: [LEGACY_DIRS[service].replace('.', '')],
-      };
-
-      store = upsertAccount(store, newAccount);
-
-      // Also track migratedFrom on existing accounts
-      const existing = findAccount(store, email);
-      if (existing && existing.migratedFrom) {
-        const source = LEGACY_DIRS[service].replace('.', '');
-        if (!existing.migratedFrom.includes(source)) {
-          existing.migratedFrom.push(source);
-        }
-      }
-
-      // Track for result
-      if (!accountServiceMap.has(email)) {
-        accountServiceMap.set(email, new Set());
-      }
-      accountServiceMap.get(email)!.add(service);
-    }
-  }
-
-  await writeAccountStore(store);
-  result.migrated = true;
-
-  for (const [email, services] of accountServiceMap) {
-    result.accounts.push({ email, services: [...services] });
-  }
-
-  return result;
-}
-
-/**
- * Check if legacy stores exist (quick check for whether migration is needed).
- */
-export async function hasLegacyStores(): Promise<boolean> {
-  for (const dirName of Object.values(LEGACY_DIRS)) {
-    try {
-      await access(join(homedir(), dirName, 'accounts.json'), constants.R_OK);
-      return true;
-    } catch {
-      continue;
-    }
-  }
-  return false;
 }
 
 // ─── Internal helpers ──────────────────────────────────────

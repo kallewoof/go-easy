@@ -9,8 +9,6 @@ import { AuthError } from '../src/errors.js';
 // Instead, we provide inline implementations matching the real ones.
 const mockReadAccountStore = vi.fn();
 const mockReadCredentials = vi.fn();
-const mockHasLegacyStores = vi.fn();
-const mockMigrateFromLegacy = vi.fn();
 
 vi.mock('../src/auth-store.js', () => {
   // Inline pure functions (matching real implementations)
@@ -47,8 +45,6 @@ vi.mock('../src/auth-store.js', () => {
   return {
     readAccountStore: (...args: unknown[]) => mockReadAccountStore(...args),
     readCredentials: (...args: unknown[]) => mockReadCredentials(...args),
-    hasLegacyStores: (...args: unknown[]) => mockHasLegacyStores(...args),
-    migrateFromLegacy: (...args: unknown[]) => mockMigrateFromLegacy(...args),
     findAccount,
     resolveToken,
   };
@@ -146,7 +142,6 @@ describe('getAuth', () => {
     clearAuthCache();
     mockReadAccountStore.mockResolvedValue(fakeStore);
     mockReadCredentials.mockResolvedValue(fakeCredentials);
-    mockHasLegacyStores.mockResolvedValue(false);
   });
 
   it('loads token and returns an OAuth2Client', async () => {
@@ -243,19 +238,6 @@ describe('getAuth', () => {
       await getAuth('gmail');
     } catch (err) {
       expect((err as AuthError).code).toBe('AUTH_NO_ACCOUNT');
-    }
-  });
-
-  it('suggests migration when legacy stores exist but no new store', async () => {
-    mockReadAccountStore.mockResolvedValue(null);
-    mockHasLegacyStores.mockResolvedValue(true);
-    try {
-      await getAuth('gmail', 'alice@example.com');
-    } catch (err) {
-      expect(err).toBeInstanceOf(AuthError);
-      expect((err as AuthError).code).toBe('AUTH_NO_ACCOUNT');
-      expect((err as AuthError).fix).toBe('npx go-easy auth list');
-      expect((err as AuthError).message).toContain('Legacy tokens found');
     }
   });
 

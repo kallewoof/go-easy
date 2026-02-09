@@ -17,8 +17,6 @@ import {
   readCredentials,
   findAccount,
   resolveToken,
-  migrateFromLegacy,
-  hasLegacyStores,
 } from './auth-store.js';
 import type { GoogleService, AccountStore } from './auth-store.js';
 export type { GoogleService } from './auth-store.js';
@@ -47,19 +45,7 @@ export async function getAuth(
   // Try to load the store
   let store = await readAccountStore();
 
-  // If no store exists, check for legacy stores and tell the caller
   if (!store) {
-    const hasLegacy = await hasLegacyStores();
-    if (hasLegacy) {
-      // Auto-migrate is NOT done here (D5: no side effects in library function).
-      // But we give an actionable error.
-      throw new AuthError('AUTH_NO_ACCOUNT', {
-        message: account
-          ? `Account "${account}" not configured. Legacy tokens found — run migration first.`
-          : `No accounts configured. Legacy tokens found — run migration first.`,
-        fix: 'npx go-easy auth list',
-      });
-    }
     throw new AuthError('AUTH_NO_ACCOUNT', {
       message: account
         ? `Account "${account}" not configured`
@@ -164,5 +150,4 @@ export function clearAuthCache(): void {
   clientCache.clear();
 }
 
-// Re-export migration for CLI use
-export { migrateFromLegacy, hasLegacyStores } from './auth-store.js';
+

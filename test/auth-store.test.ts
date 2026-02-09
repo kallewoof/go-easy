@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ─────────────────────────────────────────────────
 
@@ -7,7 +7,6 @@ const mockWriteFile = vi.fn();
 const mockRename = vi.fn();
 const mockMkdir = vi.fn();
 const mockChmod = vi.fn();
-const mockAccess = vi.fn();
 
 vi.mock('node:fs/promises', () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
@@ -15,12 +14,6 @@ vi.mock('node:fs/promises', () => ({
   rename: (...args: unknown[]) => mockRename(...args),
   mkdir: (...args: unknown[]) => mockMkdir(...args),
   chmod: (...args: unknown[]) => mockChmod(...args),
-  access: (...args: unknown[]) => mockAccess(...args),
-  constants: { R_OK: 4 },
-}));
-
-vi.mock('node:fs', () => ({
-  readFileSync: vi.fn(),
 }));
 
 import {
@@ -32,8 +25,6 @@ import {
   resolveToken,
   upsertAccount,
   removeAccount,
-  migrateFromLegacy,
-  hasLegacyStores,
 } from '../src/auth-store.js';
 import type { AccountStore, GoEasyAccount } from '../src/auth-store.js';
 
@@ -284,155 +275,6 @@ describe('removeAccount', () => {
   });
 });
 
-// ─── migration ─────────────────────────────────────────────
-
-describe('migrateFromLegacy', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    mockWriteFile.mockResolvedValue(undefined);
-    mockRename.mockResolvedValue(undefined);
-    mockMkdir.mockResolvedValue(undefined);
-    mockChmod.mockResolvedValue(undefined);
-  });
-
-  it('returns migrated=false when no legacy stores exist', async () => {
-    const result = await migrateFromLegacy();
-    expect(result.migrated).toBe(false);
-    expect(result.accounts).toHaveLength(0);
-  });
-
-  it('migrates from a single legacy store', async () => {
-    mockReadFile.mockImplementation(async (path: string) => {
-      if (path.includes('.gmcli') && path.includes('accounts.json')) {
-        return JSON.stringify([
-          {
-            email: 'alice@example.com',
-            oauth2: {
-              clientId: 'cid',
-              clientSecret: 'csec',
-              refreshToken: 'rt-gmail',
-            },
-          },
-        ]);
-      }
-      if (path.includes('.gmcli') && path.includes('credentials.json')) {
-        return JSON.stringify({ clientId: 'cid', clientSecret: 'csec' });
-      }
-      // accounts.json for new store doesn't exist yet
-      if (path.includes('.go-easy') && path.includes('accounts.json')) {
-        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-      }
-      // credentials.json for new store doesn't exist yet
-      if (path.includes('.go-easy') && path.includes('credentials.json')) {
-        throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-      }
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    });
-
-    const result = await migrateFromLegacy();
-    expect(result.migrated).toBe(true);
-    expect(result.accounts).toHaveLength(1);
-    expect(result.accounts[0].email).toBe('alice@example.com');
-    expect(result.accounts[0].services).toContain('gmail');
-
-    // Should have written accounts.json and credentials.json
-    expect(mockWriteFile).toHaveBeenCalled();
-  });
-
-  it('merges accounts across legacy stores by email (case-insensitive)', async () => {
-    mockReadFile.mockImplementation(async (path: string) => {
-      if (path.includes('.gmcli') && path.includes('accounts.json')) {
-        return JSON.stringify([{
-          email: 'Alice@example.com',
-          oauth2: { clientId: 'cid', clientSecret: 'csec', refreshToken: 'rt-gmail' },
-        }]);
-      }
-      if (path.includes('.gdcli') && path.includes('accounts.json')) {
-        return JSON.stringify([{
-          email: 'alice@example.com',
-          oauth2: { clientId: 'cid', clientSecret: 'csec', refreshToken: 'rt-drive' },
-        }]);
-      }
-      if (path.includes('credentials.json') && !path.includes('.go-easy')) {
-        return JSON.stringify({ clientId: 'cid', clientSecret: 'csec' });
-      }
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    });
-
-    const result = await migrateFromLegacy();
-    expect(result.migrated).toBe(true);
-    // Should merge into one account (case-insensitive match)
-    expect(result.accounts).toHaveLength(1);
-    expect(result.accounts[0].services).toContain('gmail');
-    expect(result.accounts[0].services).toContain('drive');
-  });
-
-  it('continues when one legacy store fails', async () => {
-    mockReadFile.mockImplementation(async (path: string) => {
-      if (path.includes('.gmcli') && path.includes('accounts.json')) {
-        return JSON.stringify([{
-          email: 'alice@example.com',
-          oauth2: { clientId: 'cid', clientSecret: 'csec', refreshToken: 'rt-gmail' },
-        }]);
-      }
-      if (path.includes('.gdcli') && path.includes('accounts.json')) {
-        throw new Error('permission denied');
-      }
-      if (path.includes('credentials.json') && !path.includes('.go-easy')) {
-        return JSON.stringify({ clientId: 'cid', clientSecret: 'csec' });
-      }
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    });
-
-    const result = await migrateFromLegacy();
-    expect(result.migrated).toBe(true);
-    expect(result.accounts).toHaveLength(1);
-    expect(result.warnings.length).toBeGreaterThan(0);
-    expect(result.warnings[0]).toContain('permission denied');
-  });
-
-  it('skips invalid entries in legacy store', async () => {
-    mockReadFile.mockImplementation(async (path: string) => {
-      if (path.includes('.gmcli') && path.includes('accounts.json')) {
-        return JSON.stringify([
-          { email: 'valid@example.com', oauth2: { clientId: 'cid', clientSecret: 'csec', refreshToken: 'rt' } },
-          { email: 'invalid', /* missing oauth2 */ },
-          null,
-        ]);
-      }
-      if (path.includes('credentials.json') && !path.includes('.go-easy')) {
-        return JSON.stringify({ clientId: 'cid', clientSecret: 'csec' });
-      }
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    });
-
-    const result = await migrateFromLegacy();
-    expect(result.migrated).toBe(true);
-    expect(result.accounts).toHaveLength(1);
-    expect(result.accounts[0].email).toBe('valid@example.com');
-  });
-});
-
-// ─── hasLegacyStores ───────────────────────────────────────
-
-describe('hasLegacyStores', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns true when at least one legacy store exists', async () => {
-    mockAccess.mockImplementation(async (path: string) => {
-      if (path.includes('.gmcli')) return;
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    });
-    expect(await hasLegacyStores()).toBe(true);
-  });
-
-  it('returns false when no legacy stores exist', async () => {
-    mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    expect(await hasLegacyStores()).toBe(false);
-  });
-});
-
 // ─── readCredentials ───────────────────────────────────────
 
 describe('readCredentials', () => {
@@ -452,5 +294,25 @@ describe('readCredentials', () => {
   it('returns null for invalid shape', async () => {
     mockReadFile.mockResolvedValue(JSON.stringify({ foo: 'bar' }));
     expect(await readCredentials()).toBeNull();
+  });
+});
+
+// ─── writeCredentials ──────────────────────────────────────
+
+describe('writeCredentials', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMkdir.mockResolvedValue(undefined);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockChmod.mockResolvedValue(undefined);
+    mockRename.mockResolvedValue(undefined);
+  });
+
+  it('writes atomically', async () => {
+    await writeCredentials({ clientId: 'cid', clientSecret: 'csec' });
+    expect(mockWriteFile).toHaveBeenCalledOnce();
+    expect(mockRename).toHaveBeenCalledOnce();
+    const writePath = mockWriteFile.mock.calls[0][0] as string;
+    expect(writePath).toContain('credentials.json.tmp');
   });
 });
