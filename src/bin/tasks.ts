@@ -57,7 +57,7 @@ export function positional(argv: string[]): string[] {
   return argv.filter((a) => !a.startsWith('--'));
 }
 
-async function main(args: string[] = process.argv.slice(2)) {
+export async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];

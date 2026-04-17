@@ -8,10 +8,10 @@ export default defineConfig({
       // No excludes — we want all source files measured so any new
       // unexpercised code (including in bin/ and auth-server.ts) is caught.
       thresholds: {
-        statements: 66,
+        statements: 86,
         branches: 69,
-        functions: 85,
-        lines: 66,
+        functions: 93,
+        lines: 86,
       },
     },
   },

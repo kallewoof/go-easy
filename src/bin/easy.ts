@@ -55,7 +55,7 @@ export function positionals(argv: string[]): string[] {
   return argv.filter((a) => !a.startsWith('--'));
 }
 
-async function main(args: string[] = process.argv.slice(2)): Promise<void> {
+export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
   if (args.length < 1) usage();
 
   const [group, subcommand, ...rest] = args;

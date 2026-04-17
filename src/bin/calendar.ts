@@ -104,7 +104,7 @@ export function buildSpecialEventFlags(flags: Record<string, string>): Partial<c
   return result;
 }
 
-async function main(args: string[] = process.argv.slice(2)) {
+export async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];

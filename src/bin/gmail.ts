@@ -96,7 +96,7 @@ export function handleRawOutput(
   return undefined; // caller must not call JSON.stringify
 }
 
-async function main(args: string[] = process.argv.slice(2)) {
+export async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];

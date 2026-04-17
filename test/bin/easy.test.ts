@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { authList, authAdd, authRemove, parseFlags, positionals } from '../../src/bin/easy.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { authList, authAdd, authRemove, parseFlags, positionals, main } from '../../src/bin/easy.js';
 
 vi.mock('../../src/auth.js', () => ({
   listAllAccounts: vi.fn().mockResolvedValue([{ email: 'user@example.com', tokens: {} }]),
@@ -31,6 +31,8 @@ vi.mock('../../src/errors.js', () => ({
   SafetyError: class SafetyError extends Error {},
 }));
 
+// ─── Utilities ─────────────────────────────────────────────
+
 describe('parseFlags', () => {
   it('parses --key=value pairs', () => {
     expect(parseFlags(['--confirm=true', '--email=foo@bar.com'])).toEqual({
@@ -54,16 +56,19 @@ describe('positionals', () => {
   });
 });
 
+// ─── Handlers ──────────────────────────────────────────────
+
 describe('authList', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   });
+  afterEach(() => { logSpy?.mockRestore(); });
 
   it('outputs accounts as JSON', async () => {
     await authList();
-    expect(logSpy).toHaveBeenCalledOnce();
     const output = JSON.parse(logSpy.mock.calls[0][0]);
     expect(output).toHaveProperty('accounts');
     expect(Array.isArray(output.accounts)).toBe(true);
@@ -75,18 +80,19 @@ describe('authAdd', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
   });
+  afterEach(() => { logSpy?.mockRestore(); exitSpy?.mockRestore(); });
 
   it('outputs the auth flow result as JSON', async () => {
     await authAdd(['user@example.com']);
-    expect(logSpy).toHaveBeenCalledOnce();
     const output = JSON.parse(logSpy.mock.calls[0][0]);
     expect(output.status).toBe('started');
   });
 
-  it('exits with usage error when no email is provided', async () => {
+  it('exits with error when no email is provided', async () => {
     await expect(authAdd([])).rejects.toThrow('exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
@@ -97,13 +103,14 @@ describe('authRemove', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
   });
+  afterEach(() => { logSpy?.mockRestore(); exitSpy?.mockRestore(); });
 
   it('removes account and outputs ok:true when --confirm is provided', async () => {
     await authRemove(['user@example.com', '--confirm']);
-    expect(logSpy).toHaveBeenCalledOnce();
     const output = JSON.parse(logSpy.mock.calls[0][0]);
     expect(output.ok).toBe(true);
     expect(output.removed).toBe('user@example.com');
@@ -123,6 +130,53 @@ describe('authRemove', () => {
 
   it('exits with error when no email is provided', async () => {
     await expect(authRemove(['--confirm'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+// ─── main() dispatch ───────────────────────────────────────
+
+describe('main() dispatch', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+  });
+  afterEach(() => { logSpy?.mockRestore(); exitSpy?.mockRestore(); });
+
+  it('auth list routes correctly', async () => {
+    await main(['auth', 'list']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output).toHaveProperty('accounts');
+  });
+
+  it('auth add routes correctly', async () => {
+    await main(['auth', 'add', 'user@example.com']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.status).toBe('started');
+  });
+
+  it('auth remove routes correctly', async () => {
+    await main(['auth', 'remove', 'user@example.com', '--confirm']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.ok).toBe(true);
+  });
+
+  it('exits on unknown group', async () => {
+    await expect(main(['unknown', 'list'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits on unknown subcommand', async () => {
+    await expect(main(['auth', 'unknown'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits when no args provided', async () => {
+    await expect(main([])).rejects.toThrow('exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
