@@ -14,11 +14,10 @@
  *   Destructive operations (delete, clear) require --confirm flag.
  */
 
+import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as tasks from '../tasks/index.js';
-
-const args = process.argv.slice(2);
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -42,7 +41,7 @@ function usage(): never {
 }
 
 /** Parse --key=value flags from args */
-function parseFlags(argv: string[]): Record<string, string> {
+export function parseFlags(argv: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
   for (const arg of argv) {
     const match = arg.match(/^--([^=]+)(?:=(.*))?$/s);
@@ -54,11 +53,11 @@ function parseFlags(argv: string[]): Record<string, string> {
 }
 
 /** Get positional args (non-flag) */
-function positional(argv: string[]): string[] {
+export function positional(argv: string[]): string[] {
   return argv.filter((a) => !a.startsWith('--'));
 }
 
-async function main() {
+async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];
@@ -196,4 +195,6 @@ async function main() {
   }
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch(() => process.exit(1));
+}

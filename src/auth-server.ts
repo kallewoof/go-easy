@@ -19,7 +19,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { URL } from 'node:url';
+import { URL, fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 
 // ─── Constants ─────────────────────────────────────────────
@@ -40,13 +40,8 @@ const ALL_SCOPES = [
 
 // ─── Args ──────────────────────────────────────────────────
 
-const email = process.argv[2];
+const email = process.argv[2] ?? '';
 const requestedPort = parseInt(process.argv[3] || '0', 10);
-
-if (!email) {
-  process.stderr.write('Usage: auth-server <email> [port]\n');
-  process.exit(1);
-}
 
 // ─── HTML responses ────────────────────────────────────────
 
@@ -101,7 +96,7 @@ async function readCredentials(): Promise<{ clientId: string; clientSecret: stri
   return JSON.parse(raw);
 }
 
-function scopeToService(scope: string): string {
+export function scopeToService(scope: string): string {
   if (scope === 'https://mail.google.com/') return 'gmail';
   if (scope === 'https://www.googleapis.com/auth/drive') return 'drive';
   if (scope === 'https://www.googleapis.com/auth/calendar') return 'calendar';
@@ -111,7 +106,7 @@ function scopeToService(scope: string): string {
 
 // ─── Token exchange ────────────────────────────────────────
 
-async function exchangeCodeForToken(
+export async function exchangeCodeForToken(
   code: string,
   redirectUri: string,
   clientId: string,
@@ -153,9 +148,10 @@ async function exchangeCodeForToken(
 
 // ─── Account store update ──────────────────────────────────
 
-async function updateAccountStore(
+export async function updateAccountStore(
   refreshToken: string,
-  grantedScopes: string[]
+  grantedScopes: string[],
+  emailAddress: string
 ): Promise<void> {
   // Read existing store (or create new)
   let store: { version: number; accounts: Array<Record<string, unknown>> };
@@ -166,7 +162,7 @@ async function updateAccountStore(
     store = { version: 1, accounts: [] };
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = emailAddress.toLowerCase().trim();
   const now = new Date().toISOString();
 
   // Find or create account
@@ -291,7 +287,7 @@ async function start(): Promise<void> {
       const missingScopes = ALL_SCOPES.filter((s) => !grantedScopes.includes(s));
 
       // Update account store
-      await updateAccountStore(tokenResponse.refresh_token, grantedScopes);
+      await updateAccountStore(tokenResponse.refresh_token, grantedScopes, email);
 
       if (missingScopes.length === 0) {
         // Full success
@@ -349,7 +345,7 @@ async function start(): Promise<void> {
   const redirectUri = `http://127.0.0.1:${port}/callback`;
 
   // Build Google OAuth URL
-  const authUrl = buildAuthUrl(creds.clientId, redirectUri);
+  const authUrl = buildAuthUrl(creds.clientId, redirectUri, email);
 
   // Write initial pending file
   await writePending({
@@ -385,7 +381,7 @@ async function start(): Promise<void> {
   }
 }
 
-function buildAuthUrl(clientId: string, redirectUri: string): string {
+export function buildAuthUrl(clientId: string, redirectUri: string, emailHint: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -393,21 +389,27 @@ function buildAuthUrl(clientId: string, redirectUri: string): string {
     scope: ALL_SCOPES.join(' '),
     access_type: 'offline',
     prompt: 'consent', // Force consent to get refresh_token
-    login_hint: email,
+    login_hint: emailHint,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
 // ─── Go ────────────────────────────────────────────────────
 
-start().catch((err) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  process.stderr.write(`auth-server error: ${msg}\n`);
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  if (!email) {
+    process.stderr.write('Usage: auth-server <email> [port]\n');
+    process.exit(1);
+  }
 
-  // Try to write error to pending file
-  writePending({
-    status: 'error',
-    message: msg,
-    completedAt: new Date().toISOString(),
-  }).finally(() => process.exit(1));
-});
+  start().catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`auth-server error: ${msg}\n`);
+
+    writePending({
+      status: 'error',
+      message: msg,
+      completedAt: new Date().toISOString(),
+    }).finally(() => process.exit(1));
+  });
+}

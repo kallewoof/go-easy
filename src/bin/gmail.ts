@@ -23,12 +23,11 @@
  */
 
 import { writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as gmail from '../gmail/index.js';
 import { parseFlags, readBodyFlags } from './gmail-flags.js';
-
-const args = process.argv.slice(2);
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -59,7 +58,7 @@ function usage(): never {
 }
 
 /** Get positional args (non-flag) */
-function positional(args: string[]): string[] {
+export function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
 }
 
@@ -74,7 +73,7 @@ function positional(args: string[]): string[] {
  * Returns the JSON result object when writing to file or b64, or undefined
  * when writing raw to stdout (caller must not JSON.stringify again).
  */
-function handleRawOutput(
+export function handleRawOutput(
   buf: Buffer,
   format: string,
   flags: Record<string, string>
@@ -97,7 +96,7 @@ function handleRawOutput(
   return undefined; // caller must not call JSON.stringify
 }
 
-async function main() {
+async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];
@@ -296,4 +295,14 @@ async function main() {
   }
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    const e = err as { toJSON?: () => unknown; message?: string; code?: string };
+    if (typeof e.toJSON === 'function') {
+      console.error(JSON.stringify(e.toJSON(), null, 2));
+    } else {
+      console.error(JSON.stringify({ error: e.code ?? 'UNKNOWN', message: e.message ?? String(err) }, null, 2));
+    }
+    process.exit(1);
+  });
+}

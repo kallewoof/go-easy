@@ -14,11 +14,10 @@
  *   Destructive operations (delete) require --confirm flag.
  */
 
+import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as calendar from '../calendar/index.js';
-
-const args = process.argv.slice(2);
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -45,7 +44,7 @@ function usage(): never {
 }
 
 /** Parse --key=value flags from args */
-function parseFlags(args: string[]): Record<string, string> {
+export function parseFlags(args: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
   for (const arg of args) {
     const match = arg.match(/^--([^=]+)(?:=(.*))?$/);
@@ -57,12 +56,12 @@ function parseFlags(args: string[]): Record<string, string> {
 }
 
 /** Get positional args (non-flag) */
-function positional(args: string[]): string[] {
+export function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
 }
 
 /** Build special event type properties from CLI flags */
-function buildSpecialEventFlags(flags: Record<string, string>): Partial<calendar.EventOptions> {
+export function buildSpecialEventFlags(flags: Record<string, string>): Partial<calendar.EventOptions> {
   const result: Partial<calendar.EventOptions> = {};
 
   if (flags.type === 'outOfOffice') {
@@ -105,7 +104,7 @@ function buildSpecialEventFlags(flags: Record<string, string>): Partial<calendar
   return result;
 }
 
-async function main() {
+async function main(args: string[] = process.argv.slice(2)) {
   if (args.length < 2) usage();
 
   const account = args[0];
@@ -231,4 +230,6 @@ async function main() {
   }
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch(() => process.exit(1));
+}

@@ -23,10 +23,9 @@ import type { GoEasyAccount } from '../auth-store.js';
 import { authAdd as authAddFlow } from '../auth-flow.js';
 import { GoEasyError, SafetyError } from '../errors.js';
 import { setSafetyContext } from '../safety.js';
+import { fileURLToPath } from 'node:url';
 
-const args = process.argv.slice(2);
-
-function usage(): never {
+export function usage(): never {
   console.log(
     JSON.stringify({
       error: 'USAGE',
@@ -42,7 +41,7 @@ function usage(): never {
 }
 
 /** Parse --key=value flags from args */
-function parseFlags(argv: string[]): Record<string, string> {
+export function parseFlags(argv: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
   for (const arg of argv) {
     const m = arg.match(/^--([a-z-]+)(?:=(.*))?$/);
@@ -52,11 +51,11 @@ function parseFlags(argv: string[]): Record<string, string> {
 }
 
 /** Positional args (non-flag) */
-function positionals(argv: string[]): string[] {
+export function positionals(argv: string[]): string[] {
   return argv.filter((a) => !a.startsWith('--'));
 }
 
-async function main(): Promise<void> {
+async function main(args: string[] = process.argv.slice(2)): Promise<void> {
   if (args.length < 1) usage();
 
   const [group, subcommand, ...rest] = args;
@@ -85,14 +84,14 @@ async function main(): Promise<void> {
 
 // ─── auth list ─────────────────────────────────────────────
 
-async function authList(): Promise<void> {
+export async function authList(): Promise<void> {
   const accounts = await listAllAccounts();
   console.log(JSON.stringify({ accounts }, null, 2));
 }
 
 // ─── auth add ──────────────────────────────────────────────
 
-async function authAdd(argv: string[]): Promise<void> {
+export async function authAdd(argv: string[]): Promise<void> {
   const pos = positionals(argv);
   const email = pos[0];
 
@@ -112,7 +111,7 @@ async function authAdd(argv: string[]): Promise<void> {
 
 // ─── auth remove ───────────────────────────────────────────
 
-async function authRemove(argv: string[]): Promise<void> {
+export async function authRemove(argv: string[]): Promise<void> {
   const pos = positionals(argv);
   const flags = parseFlags(argv);
   const email = pos[0];
@@ -176,16 +175,18 @@ async function authRemove(argv: string[]): Promise<void> {
 
 // ─── Main ──────────────────────────────────────────────────
 
-main().catch((err) => {
-  if (err instanceof GoEasyError) {
-    console.error(JSON.stringify(err.toJSON()));
-  } else {
-    console.error(
-      JSON.stringify({
-        error: 'UNKNOWN',
-        message: err instanceof Error ? err.message : String(err),
-      })
-    );
-  }
-  process.exit(1);
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    if (err instanceof GoEasyError) {
+      console.error(JSON.stringify(err.toJSON()));
+    } else {
+      console.error(
+        JSON.stringify({
+          error: 'UNKNOWN',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }
+    process.exit(1);
+  });
+}
