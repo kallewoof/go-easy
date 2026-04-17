@@ -295,6 +295,16 @@ describe('readCredentials', () => {
     mockReadFile.mockResolvedValue(JSON.stringify({ foo: 'bar' }));
     expect(await readCredentials()).toBeNull();
   });
+
+  it('reads Google-emitted installed app format', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ installed: { client_id: 'cid', client_secret: 'csec', other: 'ignored' } }));
+    expect(await readCredentials()).toEqual({ clientId: 'cid', clientSecret: 'csec' });
+  });
+
+  it('reads Google-emitted web app format', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ web: { client_id: 'cid', client_secret: 'csec' } }));
+    expect(await readCredentials()).toEqual({ clientId: 'cid', clientSecret: 'csec' });
+  });
 });
 
 // ─── writeCredentials ──────────────────────────────────────

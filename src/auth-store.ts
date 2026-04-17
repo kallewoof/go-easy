@@ -102,8 +102,12 @@ export async function readCredentials(): Promise<OAuthCredentials | null> {
   try {
     const raw = await readFile(CREDENTIALS_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    if (!parsed?.clientId || !parsed?.clientSecret) return null;
-    return { clientId: parsed.clientId, clientSecret: parsed.clientSecret };
+    // Support Google-emitted format: {"installed":{"client_id":...,"client_secret":...}}
+    const inner = parsed?.installed ?? parsed?.web ?? parsed;
+    const clientId = inner?.client_id ?? inner?.clientId;
+    const clientSecret = inner?.client_secret ?? inner?.clientSecret;
+    if (!clientId || !clientSecret) return null;
+    return { clientId, clientSecret };
   } catch (err: unknown) {
     if (isEnoent(err)) return null;
     throw err;
