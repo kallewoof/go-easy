@@ -112,6 +112,33 @@ describe('main()', () => {
     );
   });
 
+  it('events — defaults timeMin to today when --from is omitted', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    await main([ACC, 'events', 'primary']);
+    const opts = vi.mocked(calendarModule.listEvents).mock.calls[0][2];
+    // Without a default, timeMin would be undefined — causing birthdays from 1931
+    // to bleed through because the API returns all events from the beginning of time.
+    expect(opts.timeMin).toBeDefined();
+    expect(opts.timeMin).toContain(today);
+  });
+
+  it('events — 1931 birthday excluded unless --from predates it', async () => {
+    // Simulate: user has a contact born 1931-03-15; Google surfaces this as a
+    // birthday event with start = 1931-03-15. Without a default timeMin the API
+    // returns it; with timeMin = today it must be filtered out server-side.
+    const today = new Date().toISOString().slice(0, 10);
+    await main([ACC, 'events', 'primary']);
+    const opts = vi.mocked(calendarModule.listEvents).mock.calls[0][2];
+    expect(new Date(opts.timeMin!).getFullYear()).toBeGreaterThanOrEqual(
+      new Date(today).getFullYear(),
+    );
+
+    vi.mocked(calendarModule.listEvents).mockClear();
+    await main([ACC, 'events', 'primary', '--from=1930-01-01']);
+    const optsWithFrom = vi.mocked(calendarModule.listEvents).mock.calls[0][2];
+    expect(optsWithFrom.timeMin).toBe('1930-01-01'); // explicit past date passes through
+  });
+
   it('events --event-types — passes event type filter', async () => {
     await main([ACC, 'events', 'primary', '--event-types=outOfOffice,focusTime']);
     expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith(

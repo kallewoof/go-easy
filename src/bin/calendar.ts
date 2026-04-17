@@ -144,7 +144,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
       case 'events':
         if (!pos[0]) usage();
         result = await calendar.listEvents(auth, pos[0], {
-          timeMin: flags.from,
+          timeMin: flags.from ?? new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
           timeMax: flags.to,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           query: flags.query,

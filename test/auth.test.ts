@@ -64,7 +64,7 @@ vi.mock('google-auth-library', () => ({
 }));
 
 // Import after mocks
-import { getAuth, listAccounts, clearAuthCache } from '../src/auth.js';
+import { getAuth, listAccounts, listAllAccounts, clearAuthCache } from '../src/auth.js';
 import type { AccountStore } from '../src/auth-store.js';
 
 // ─── Fixtures ──────────────────────────────────────────────
@@ -258,6 +258,26 @@ describe('getAuth', () => {
       refresh_token: 'refresh-alice-gmail',
     });
   });
+
+  it('throws AUTH_NO_ACCOUNT with email in message when store is null and account is specified', async () => {
+    mockReadAccountStore.mockResolvedValue(null);
+    const err = await getAuth('gmail', 'specific@example.com').catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.code).toBe('AUTH_NO_ACCOUNT');
+    expect(err.message).toContain('specific@example.com');
+    expect(err.fix).toContain('specific@example.com');
+  });
+
+  it('throws AUTH_NO_ACCOUNT with generic message when store is null and no account specified', async () => {
+    // Existing test covers this path; this variant tests empty store (no accounts)
+    // so findAccount returns undefined, hitting the no-account-specified branches
+    mockReadAccountStore.mockResolvedValue({ version: 1, accounts: [] });
+    const err = await getAuth('gmail').catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.code).toBe('AUTH_NO_ACCOUNT');
+    expect(err.message).toBe('No accounts configured');
+    expect(err.fix).toBe('npx go-easy auth add <email>');
+  });
 });
 
 describe('listAccounts', () => {
@@ -278,6 +298,34 @@ describe('listAccounts', () => {
     mockReadAccountStore.mockResolvedValue(null);
     const emails = await listAccounts('gmail');
     expect(emails).toEqual([]);
+  });
+});
+
+describe('listAllAccounts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadAccountStore.mockResolvedValue(fakeStore);
+  });
+
+  it('returns empty array when no store', async () => {
+    mockReadAccountStore.mockResolvedValue(null);
+    expect(await listAllAccounts()).toEqual([]);
+  });
+
+  it('reports source=legacy for per-service tokens', async () => {
+    const results = await listAllAccounts();
+    const alice = results.find((a) => a.email === 'alice@example.com')!;
+    expect(alice.source).toBe('legacy');
+    expect(alice.scopes).toContain('https://mail.google.com/');
+    expect(alice.scopes).toContain('https://www.googleapis.com/auth/drive');
+  });
+
+  it('reports source=combined for combined token', async () => {
+    mockReadAccountStore.mockResolvedValue(fakeCombinedStore);
+    const results = await listAllAccounts();
+    expect(results).toHaveLength(1);
+    expect(results[0].source).toBe('combined');
+    expect(results[0].scopes).toContain('https://mail.google.com/');
   });
 });
 
