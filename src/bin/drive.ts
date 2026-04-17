@@ -16,6 +16,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
@@ -212,6 +213,6 @@ export async function main(args: string[] = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch(() => process.exit(1));
 }

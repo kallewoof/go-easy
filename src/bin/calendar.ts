@@ -15,6 +15,7 @@
  */
 
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as calendar from '../calendar/index.js';
@@ -239,6 +240,6 @@ export async function main(args: string[] = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch(() => process.exit(1));
 }

@@ -3,7 +3,7 @@ import { handleRawOutput, positional, main } from '../../src/bin/gmail.js';
 import * as gmailModule from '../../src/gmail/index.js';
 import { setSafetyContext } from '../../src/safety.js';
 
-vi.mock('node:fs', () => ({ writeFileSync: vi.fn() }));
+vi.mock('node:fs', () => ({ writeFileSync: vi.fn(), realpathSync: (p: string) => p }));
 vi.mock('../../src/auth.js', () => ({
   getAuth: vi.fn().mockResolvedValue('fake-auth'),
 }));

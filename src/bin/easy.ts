@@ -24,6 +24,7 @@ import { authAdd as authAddFlow } from '../auth-flow.js';
 import { GoEasyError, SafetyError } from '../errors.js';
 import { setSafetyContext } from '../safety.js';
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 
 export function usage(): never {
   console.log(
@@ -175,7 +176,7 @@ export async function authRemove(argv: string[]): Promise<void> {
 
 // ─── Main ──────────────────────────────────────────────────
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch((err) => {
     if (err instanceof GoEasyError) {
       console.error(JSON.stringify(err.toJSON()));

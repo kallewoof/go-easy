@@ -22,7 +22,7 @@
  *   Without --confirm, the command shows what WOULD happen and exits.
  */
 
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
@@ -295,7 +295,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch((err: unknown) => {
     const e = err as { toJSON?: () => unknown; message?: string; code?: string };
     if (typeof e.toJSON === 'function') {
