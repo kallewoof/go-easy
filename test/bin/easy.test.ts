@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { authList, authAdd, authRemove, parseFlags, positionals, main } from '../../src/bin/easy.js';
+import { authList, authAdd, authRemove, credentialsList, credentialsSet, credentialsAppend, parseFlags, positionals, main } from '../../src/bin/easy.js';
 
 vi.mock('../../src/auth.js', () => ({
   listAllAccounts: vi.fn().mockResolvedValue([{ email: 'user@example.com', tokens: {} }]),
   clearAuthCache: vi.fn(),
 }));
+
+const mockImportCredentials = vi.fn().mockResolvedValue({ clientId: 'new-id', clientSecret: 'new-secret' });
+const mockAppendCredentials = vi.fn().mockResolvedValue({ clientId: 'appended-id', clientSecret: 'appended-secret', name: 'work' });
+const mockReadAllCredentials = vi.fn().mockResolvedValue([{ clientId: 'id', clientSecret: 'secret' }]);
 
 vi.mock('../../src/auth-store.js', () => ({
   readAccountStore: vi.fn().mockImplementation(() => Promise.resolve({
@@ -13,6 +17,10 @@ vi.mock('../../src/auth-store.js', () => ({
   })),
   writeAccountStore: vi.fn().mockResolvedValue(undefined),
   readCredentials: vi.fn().mockResolvedValue({ clientId: 'id', clientSecret: 'secret' }),
+  readAllCredentials: (...args: unknown[]) => mockReadAllCredentials(...args),
+  importCredentials: (...args: unknown[]) => mockImportCredentials(...args),
+  appendCredentials: (...args: unknown[]) => mockAppendCredentials(...args),
+  getConfigDir: vi.fn().mockReturnValue('/mock/config'),
   findAccount: vi.fn((store: { accounts: Array<{ email: string }> }, email: string) =>
     store.accounts.find((a) => a.email.toLowerCase() === email.toLowerCase()) ?? null
   ),
@@ -39,6 +47,10 @@ describe('parseFlags', () => {
       confirm: 'true',
       email: 'foo@bar.com',
     });
+  });
+
+  it('parses --key value (space-separated)', () => {
+    expect(parseFlags(['--credentials', '1'])).toEqual({ credentials: '1' });
   });
 
   it('sets bare flags to "true"', () => {
@@ -134,6 +146,90 @@ describe('authRemove', () => {
   });
 });
 
+// ─── credentials commands ──────────────────────────────────
+
+describe('credentialsList', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => { logSpy?.mockRestore(); });
+
+  it('outputs credentials list with clientIds', async () => {
+    await credentialsList();
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(Array.isArray(output.credentials)).toBe(true);
+    expect(output.credentials[0]).toHaveProperty('clientId');
+    expect(output.credentials[0]).not.toHaveProperty('clientSecret');
+  });
+
+  it('outputs hint when no credentials configured', async () => {
+    mockReadAllCredentials.mockResolvedValueOnce([]);
+    await credentialsList();
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.credentials).toHaveLength(0);
+    expect(output.hint).toMatch(/credentials set/);
+  });
+});
+
+describe('credentialsSet', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+  });
+  afterEach(() => { logSpy?.mockRestore(); exitSpy?.mockRestore(); });
+
+  it('imports credentials from file and outputs ok', async () => {
+    await credentialsSet(['/path/to/creds.json']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.ok).toBe(true);
+    expect(output.clientId).toBe('new-id');
+  });
+
+  it('exits with error when no file path provided', async () => {
+    await expect(credentialsSet([])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits with error when import fails', async () => {
+    mockImportCredentials.mockRejectedValueOnce(new Error('bad file'));
+    await expect(credentialsSet(['/bad.json'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('credentialsAppend', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+  });
+  afterEach(() => { logSpy?.mockRestore(); exitSpy?.mockRestore(); });
+
+  it('appends credentials and outputs ok with total count', async () => {
+    mockReadAllCredentials.mockResolvedValueOnce([{ clientId: 'id' }, { clientId: 'appended-id' }]);
+    await credentialsAppend(['/path/to/creds.json', '--name=work']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.ok).toBe(true);
+    expect(output.appended.clientId).toBe('appended-id');
+    expect(output.total).toBe(2);
+  });
+
+  it('exits with error when no file path provided', async () => {
+    await expect(credentialsAppend([])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
 // ─── main() dispatch ───────────────────────────────────────
 
 describe('main() dispatch', () => {
@@ -163,6 +259,29 @@ describe('main() dispatch', () => {
     await main(['auth', 'remove', 'user@example.com', '--confirm']);
     const output = JSON.parse(logSpy.mock.calls[0][0]);
     expect(output.ok).toBe(true);
+  });
+
+  it('credentials list routes correctly', async () => {
+    await main(['credentials', 'list']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output).toHaveProperty('credentials');
+  });
+
+  it('credentials set routes correctly', async () => {
+    await main(['credentials', 'set', '/path/to/creds.json']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.ok).toBe(true);
+  });
+
+  it('credentials append routes correctly', async () => {
+    await main(['credentials', 'append', '/path/to/creds.json']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.ok).toBe(true);
+  });
+
+  it('exits on unknown credentials subcommand', async () => {
+    await expect(main(['credentials', 'unknown'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('exits on unknown group', async () => {
