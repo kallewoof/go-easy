@@ -25,14 +25,14 @@ Requires **Node.js ≥ 20**.
 
 ## Auth Setup
 
-go-easy manages its own OAuth2 tokens in `~/.go-easy/`.
+go-easy manages its own OAuth2 tokens in `~/.config/go-easy/`.
 
 ### Prerequisites
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the Gmail, Drive, and Calendar APIs
 3. Create OAuth2 credentials (Desktop application type)
-4. Save credentials to `~/.go-easy/credentials.json`:
+4. Save credentials to `~/.config/go-easy/credentials.json`:
 
 ```json
 {

@@ -1,7 +1,7 @@
 /**
  * Auth module — OAuth2 client factory with multi-account support.
  *
- * Reads tokens from the unified store at ~/.go-easy/accounts.json.
+ * Reads tokens from the unified store at ~/.config/go-easy/accounts.json.
  * Falls back to legacy CLI stores (~/.gmcli, ~/.gdcli, ~/.gccli) via migration.
  *
  * Token resolution per account:
@@ -34,7 +34,7 @@ const clientCache = new Map<string, OAuth2Client>();
  *
  * @example
  * ```ts
- * import { getAuth } from '@marcfargas/go-easy/auth';
+ * import { getAuth } from 'go-easy/auth';
  * const auth = await getAuth('gmail', 'marc@blegal.eu');
  * ```
  */
@@ -88,7 +88,7 @@ export async function getAuth(
   const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('AUTH_NO_CREDENTIALS', {
-      message: 'OAuth client credentials not found at ~/.go-easy/credentials.json',
+      message: 'OAuth client credentials not found at ~/.config/go-easy/credentials.json',
       fix: 'npx go-easy auth add <email>',
     });
   }

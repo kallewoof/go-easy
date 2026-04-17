@@ -87,7 +87,7 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
   const creds = await readCredentials();
   if (!creds) {
     throw new AuthError('AUTH_NO_CREDENTIALS', {
-      message: 'OAuth client credentials not found at ~/.go-easy/credentials.json',
+      message: 'OAuth client credentials not found at ~/.config/go-easy/credentials.json',
     });
   }
 

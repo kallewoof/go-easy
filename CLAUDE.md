@@ -39,7 +39,7 @@ Tests mirror the `src/` structure under `test/`.
 
 ### Auth System
 
-- Single combined OAuth2 token per account covering all scopes, stored at `~/.go-easy/accounts.json`
+- Single combined OAuth2 token per account covering all scopes, stored at `~/.config/go-easy/accounts.json`
 - Two-phase OAuth flow (Phase 1 returns URL, Phase 2 polls) — designed for agent-compatibility
 - OAuth2Client is cached per `"service:email"` key
 - Backward-compatible with legacy per-service token files (`~/.gmcli`, `~/.gdcli`, `~/.gccli`)

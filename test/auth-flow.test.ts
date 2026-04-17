@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 // We need to mock several modules before importing auth-flow
-const GO_EASY_DIR = join(homedir(), '.go-easy');
+const GO_EASY_DIR = join(homedir(), '.config', 'go-easy');
 const PENDING_DIR = join(GO_EASY_DIR, 'pending');
 
 // Mock state

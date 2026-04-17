@@ -1,5 +1,5 @@
 /**
- * Auth store — manages the ~/.go-easy/ token store.
+ * Auth store — manages the ~/.config/go-easy/ token store.
  *
  * Responsibilities:
  *   - Read/write accounts.json (v1 schema, atomic writes)
@@ -10,8 +10,9 @@
  */
 
 import { readFile, writeFile, rename, mkdir, chmod } from 'node:fs/promises';
+import { existsSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { SCOPES } from './scopes.js';
 
 // ─── Types ─────────────────────────────────────────────────
@@ -48,7 +49,32 @@ export interface OAuthCredentials {
 
 // ─── Paths ─────────────────────────────────────────────────
 
-const GO_EASY_DIR = join(homedir(), '.go-easy');
+function platformConfigBase(): string {
+  const home = homedir();
+  const os = platform();
+  if (os === 'win32') return join(process.env['APPDATA'] ?? join(home, 'AppData', 'Roaming'), 'go-easy');
+  if (os === 'darwin') return join(home, 'Library', 'Application Support', 'go-easy');
+  return join(process.env['XDG_CONFIG_HOME'] ?? join(home, '.config'), 'go-easy');
+}
+
+function resolveConfigDir(): string {
+  if (process.env['GO_EASY_DIR']) return process.env['GO_EASY_DIR'];
+  const legacy = join(homedir(), '.go-easy');
+  const modern = platformConfigBase();
+  if (existsSync(legacy) && !existsSync(modern)) {
+    try {
+      renameSync(legacy, modern);
+      process.stderr.write(`go-easy: config directory migrated from ${legacy} to ${modern}\n`);
+      return modern;
+    } catch {
+      // Cross-device rename (rare); fall back to legacy rather than failing.
+      return legacy;
+    }
+  }
+  return modern;
+}
+
+const GO_EASY_DIR = resolveConfigDir();
 const ACCOUNTS_FILE = join(GO_EASY_DIR, 'accounts.json');
 const CREDENTIALS_FILE = join(GO_EASY_DIR, 'credentials.json');
 const PENDING_DIR = join(GO_EASY_DIR, 'pending');
@@ -84,7 +110,7 @@ export async function readAccountStore(): Promise<AccountStore | null> {
 
 /**
  * Write the account store atomically.
- * Creates ~/.go-easy/ if needed with correct permissions.
+ * Creates ~/.config/go-easy/ if needed with correct permissions.
  */
 export async function writeAccountStore(store: AccountStore): Promise<void> {
   await ensureConfigDir();

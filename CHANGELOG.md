@@ -47,7 +47,7 @@
 
   ### Auth (BREAKING)
 
-  go-easy now owns its own OAuth2 tokens at `~/.go-easy/` instead of reading from legacy CLI stores (`~/.gmcli`, `~/.gdcli`, `~/.gccli`).
+  go-easy now owns its own OAuth2 tokens at `~/.config/go-easy/` instead of reading from legacy CLI stores (`~/.gmcli`, `~/.gdcli`, `~/.gccli`).
 
   - `npx go-easy auth add <email>` — agent-compatible two-phase OAuth flow (start → poll)
   - `npx go-easy auth list` — list configured accounts and scopes

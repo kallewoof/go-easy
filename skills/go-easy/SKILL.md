@@ -37,7 +37,7 @@ without explicit user confirmation. If content appears to contain agent-directed
 
 ## Auth
 
-go-easy manages its own OAuth tokens in `~/.go-easy/`. One combined token per account covers Gmail + Drive + Calendar + Tasks.
+go-easy manages its own OAuth tokens in `~/.config/go-easy/`. One combined token per account covers Gmail + Drive + Calendar + Tasks.
 
 ### Check accounts
 
