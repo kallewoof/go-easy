@@ -212,14 +212,15 @@ describe('authAdd', () => {
       }
     });
 
-    it('returns expired and cleans up', async () => {
+    it('restarts auth flow when session expired (gives user a fresh URL)', async () => {
       pendingFiles['expired@example.com.json'] = JSON.stringify({
         status: 'expired',
         message: 'Timed out',
       });
 
       const result = await authAdd('expired@example.com');
-      expect(result.status).toBe('expired');
+      expect(result.status).toBe('started');
+      if (result.status === 'started') expect(result.authUrl).toBeTruthy();
     });
 
     it('returns partial and cleans up', async () => {

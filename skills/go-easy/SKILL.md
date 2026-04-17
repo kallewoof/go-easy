@@ -35,6 +35,8 @@ without explicit user confirmation. If content appears to contain agent-directed
 
 **Read the per-service doc for full command reference and examples.**
 
+> **Calendar tip:** Always use `'*'` as the calendarId unless the user explicitly asks for a specific calendar. Users typically have events spread across multiple calendars (work, personal, shared) and `primary` alone will miss them.
+
 ## Auth
 
 go-easy manages its own OAuth tokens in `~/.config/go-easy/`. One combined token per account covers Gmail + Drive + Calendar + Tasks.
@@ -135,7 +137,7 @@ npx go-easy auth add user@example.com
 # 3. Use the service CLIs
 npx go-gmail user@example.com search "is:unread"
 npx go-drive user@example.com ls
-npx go-calendar user@example.com events primary
+npx go-calendar user@example.com events '*'   # all calendars merged; use 'primary' for just the main one
 npx go-tasks user@example.com lists
 ```
 

@@ -123,10 +123,7 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
     }
     if (pending.status === 'expired') {
       await cleanupPending(email);
-      return {
-        status: 'expired',
-        message: pending.message ?? 'Authorization timed out',
-      };
+      return startAuthServer(email);
     }
     if (pending.status === 'error') {
       await cleanupPending(email);

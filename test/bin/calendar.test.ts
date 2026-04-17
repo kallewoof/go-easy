@@ -147,6 +147,32 @@ describe('main()', () => {
     );
   });
 
+  it('events * — expands to all calendars from listCalendars', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'work@group.calendar.google.com', summary: 'Work' },
+    ]);
+    await main([ACC, 'events', '*', '--from=2026-01-01']);
+    expect(vi.mocked(calendarModule.listCalendars)).toHaveBeenCalledWith('fake-auth');
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'work@group.calendar.google.com', expect.any(Object));
+  });
+
+  it('events * — skips calendars that return errors (e.g. holiday feeds)', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'holidays@group.v.calendar.google.com', summary: 'Holidays' },
+    ]);
+    vi.mocked(calendarModule.listEvents)
+      .mockResolvedValueOnce({ items: [{ id: 'e1', summary: 'Event', start: '2026-01-01', end: '2026-01-02' }] })
+      .mockRejectedValueOnce(Object.assign(new Error('Not Found'), { code: 404 }));
+    await main([ACC, 'events', '*', '--from=2026-01-01']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.items).toHaveLength(1);
+    expect(output.items[0].id).toBe('e1');
+  });
+
   it('events — multi-calendar: calls listEvents once per calendar ID', async () => {
     await main([ACC, 'events', 'primary,work@example.com', '--from=2026-01-01']);
     expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(2);

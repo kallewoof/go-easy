@@ -38,8 +38,20 @@ npx go-calendar <account> events primary --max=50 --page-token=<token>
 # Filter by event type
 npx go-calendar <account> events primary --event-types=workingLocation
 npx go-calendar <account> events primary --event-types=default,outOfOffice
+
+# Multiple calendars — pass comma-separated IDs (no spaces)
+# Results are fetched in parallel, merged, and sorted by start time.
+# --max is applied after the merge, so it limits the combined total.
+npx go-calendar <account> events primary,work@group.calendar.google.com \
+  --from=2026-04-01T00:00:00Z --max=50
+
+# All calendars — '*' expands to every calendar in the account
+npx go-calendar <account> events '*' --from=2026-04-01T00:00:00Z --max=50
 ```
 Returns: `{ items: CalendarEvent[], nextPageToken? }`
+
+Note: `nextPageToken` is only present for single-calendar calls. For multi-calendar merges
+(including `*`) there is no pagination token — increase `--max` or narrow the date range instead.
 
 **Defaults:**
 - `--max`: 20 per page
