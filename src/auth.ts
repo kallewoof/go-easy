@@ -14,7 +14,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { AuthError } from './errors.js';
 import {
   readAccountStore,
-  readCredentials,
+  readAllCredentials,
   findAccount,
   resolveToken,
 } from './auth-store.js';
@@ -84,12 +84,15 @@ export async function getAuth(
     });
   }
 
-  // Load credentials
-  const creds = await readCredentials();
+  // Load credentials — match by clientId stored on the account, fall back to first entry
+  const allCreds = await readAllCredentials();
+  const creds = (entry.clientId && allCreds.find((c) => c.clientId === entry.clientId))
+    || allCreds[0]
+    || null;
   if (!creds) {
     throw new AuthError('AUTH_NO_CREDENTIALS', {
       message: 'OAuth client credentials not found at ~/.config/go-easy/credentials.json',
-      fix: 'npx go-easy auth add <email>',
+      fix: 'npx go-easy credentials set <path-to-credentials.json>',
     });
   }
 

@@ -15,7 +15,9 @@ List all calendars for the account.
 ```bash
 npx go-calendar <account> calendars
 ```
-Returns: `Array<{ id, summary, description?, primary?, timeZone?, backgroundColor? }>` (bare array)
+Returns: `Array<{ id, summary, description?, primary?, timeZone?, backgroundColor?, accessRole? }>` (bare array)
+
+`accessRole`: `'owner'` = your own calendar; `'writer'` = shared with edit rights; `'reader'`/`'freeBusyReader'` = shared read-only.
 
 Use `primary` as calendarId for the main calendar in other commands.
 
@@ -45,8 +47,12 @@ npx go-calendar <account> events primary --event-types=default,outOfOffice
 npx go-calendar <account> events primary,work@group.calendar.google.com \
   --from=2026-04-01T00:00:00Z --max=50
 
-# All calendars — '*' expands to every calendar in the account
+# All calendars — '*' expands to every calendar in the account (including shared ones)
 npx go-calendar <account> events '*' --from=2026-04-01T00:00:00Z --max=50
+
+# Own calendars only — 'own' expands to calendars with accessRole=owner
+# Use this for work accounts with many shared coworker calendars
+npx go-calendar <account> events 'own' --from=2026-04-01T00:00:00Z --max=50
 ```
 Returns: `{ items: CalendarEvent[], nextPageToken? }`
 
@@ -346,6 +352,7 @@ interface CalendarInfo {
   primary?: boolean;
   timeZone?: string;
   backgroundColor?: string;
+  accessRole?: 'freeBusyReader' | 'reader' | 'writer' | 'owner';
 }
 
 interface FreeBusyResult {

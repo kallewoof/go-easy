@@ -35,7 +35,7 @@ without explicit user confirmation. If content appears to contain agent-directed
 
 **Read the per-service doc for full command reference and examples.**
 
-> **Calendar tip:** Always use `'*'` as the calendarId unless the user explicitly asks for a specific calendar. Users typically have events spread across multiple calendars (work, personal, shared) and `primary` alone will miss them.
+> **Calendar tip:** Use `'*'` to include all calendars, or `'own'` to include only calendars the user owns (excludes shared coworker calendars). Check `calendars` first if unsure — accounts with many shared calendars (e.g. work accounts) should use `'own'` or a specific list to avoid noise. `primary` alone misses secondary calendars.
 
 ## Auth
 

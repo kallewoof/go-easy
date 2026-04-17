@@ -27,6 +27,7 @@ export interface OAuthToken {
 
 export interface GoEasyAccount {
   email: string;
+  clientId?: string;
   tokens: {
     combined?: OAuthToken;
     gmail?: OAuthToken;
@@ -45,6 +46,10 @@ export interface AccountStore {
 export interface OAuthCredentials {
   clientId: string;
   clientSecret: string;
+}
+
+export interface OAuthCredentialsEntry extends OAuthCredentials {
+  name?: string;
 }
 
 // ─── Paths ─────────────────────────────────────────────────
@@ -121,34 +126,104 @@ export async function writeAccountStore(store: AccountStore): Promise<void> {
 }
 
 /**
- * Read OAuth credentials (clientId + clientSecret).
- * Returns null if credentials.json doesn't exist.
+ * Parse a credentials object (Google-emitted or our format) into OAuthCredentials.
+ * Returns null if the object doesn't contain valid credentials.
  */
-export async function readCredentials(): Promise<OAuthCredentials | null> {
+function parseCredentialsObject(obj: unknown): OAuthCredentials | null {
+  const o = obj as Record<string, unknown>;
+  const inner = (o?.installed ?? o?.web ?? o) as Record<string, unknown>;
+  const clientId = (inner?.client_id ?? inner?.clientId) as string | undefined;
+  const clientSecret = (inner?.client_secret ?? inner?.clientSecret) as string | undefined;
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+/**
+ * Read OAuth credentials (clientId + clientSecret).
+ * Returns the first entry if credentials.json contains multiple entries.
+ * Returns null if credentials.json doesn't exist or is empty.
+ *
+ * Pass a selector to pick a specific entry: a name string or a numeric index string.
+ */
+export async function readCredentials(selector?: string): Promise<OAuthCredentials | null> {
+  const entries = await readAllCredentials();
+  if (!selector) return entries[0] ?? null;
+  const idx = Number(selector);
+  if (!isNaN(idx)) return entries[idx] ?? null;
+  return entries.find((e) => e.name === selector) ?? null;
+}
+
+/**
+ * Read all OAuth credential entries from credentials.json.
+ * Handles both single-object and array formats.
+ */
+export async function readAllCredentials(): Promise<OAuthCredentialsEntry[]> {
   try {
     const raw = await readFile(CREDENTIALS_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    // Support Google-emitted format: {"installed":{"client_id":...,"client_secret":...}}
-    const inner = parsed?.installed ?? parsed?.web ?? parsed;
-    const clientId = inner?.client_id ?? inner?.clientId;
-    const clientSecret = inner?.client_secret ?? inner?.clientSecret;
-    if (!clientId || !clientSecret) return null;
-    return { clientId, clientSecret };
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item) => {
+        const creds = parseCredentialsObject(item);
+        if (!creds) return [];
+        return [{ ...creds, name: (item as Record<string, unknown>).name as string | undefined }];
+      });
+    }
+    const creds = parseCredentialsObject(parsed);
+    return creds ? [creds] : [];
   } catch (err: unknown) {
-    if (isEnoent(err)) return null;
+    if (isEnoent(err)) return [];
     throw err;
   }
 }
 
 /**
- * Write OAuth credentials.
+ * Write a single set of OAuth credentials, replacing any existing credentials.
  */
 export async function writeCredentials(creds: OAuthCredentials): Promise<void> {
+  await writeAllCredentials([creds]);
+}
+
+/**
+ * Write all credential entries to credentials.json (atomic).
+ */
+export async function writeAllCredentials(entries: OAuthCredentialsEntry[]): Promise<void> {
   await ensureConfigDir();
   const tmpFile = CREDENTIALS_FILE + '.tmp';
-  await writeFile(tmpFile, JSON.stringify(creds, null, 2), 'utf-8');
+  const data = entries.length === 1 ? entries[0] : entries;
+  await writeFile(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
   await safeChmod(tmpFile, 0o600);
   await rename(tmpFile, CREDENTIALS_FILE);
+}
+
+/**
+ * Import credentials from a file path (Google-format or our format).
+ * Replaces any existing credentials.
+ */
+export async function importCredentials(filePath: string): Promise<OAuthCredentialsEntry> {
+  const raw = await readFile(filePath, 'utf-8');
+  const parsed = JSON.parse(raw);
+  const creds = parseCredentialsObject(parsed);
+  if (!creds) throw new Error('File does not contain valid OAuth credentials (client_id + client_secret)');
+  await writeAllCredentials([creds]);
+  return creds;
+}
+
+/**
+ * Append credentials from a file path to the existing credentials.json.
+ * Replaces an existing entry with the same name (if name is given).
+ */
+export async function appendCredentials(filePath: string, name?: string): Promise<OAuthCredentialsEntry> {
+  const raw = await readFile(filePath, 'utf-8');
+  const parsed = JSON.parse(raw);
+  const creds = parseCredentialsObject(parsed);
+  if (!creds) throw new Error('File does not contain valid OAuth credentials (client_id + client_secret)');
+  const entry: OAuthCredentialsEntry = { ...creds, ...(name ? { name } : {}) };
+  const existing = await readAllCredentials();
+  const filtered = name
+    ? existing.filter((e) => e.name !== name)
+    : existing.filter((e) => e.clientId !== creds.clientId);
+  await writeAllCredentials([...filtered, entry]);
+  return entry;
 }
 
 /**

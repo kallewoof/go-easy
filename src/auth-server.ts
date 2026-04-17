@@ -52,6 +52,7 @@ const ALL_SCOPES = [
 
 const email = process.argv[2] ?? '';
 const requestedPort = parseInt(process.argv[3] || '0', 10);
+const credentialsSelector = process.argv[4];
 
 // ─── HTML responses ────────────────────────────────────────
 
@@ -158,7 +159,8 @@ export async function exchangeCodeForToken(
 export async function updateAccountStore(
   refreshToken: string,
   grantedScopes: string[],
-  emailAddress: string
+  emailAddress: string,
+  clientId?: string
 ): Promise<void> {
   // Read existing store (or create new)
   let store: { version: number; accounts: Array<Record<string, unknown>> };
@@ -186,6 +188,8 @@ export async function updateAccountStore(
     };
     store.accounts.push(account);
   }
+
+  if (clientId) account.clientId = clientId;
 
   const tokens = (account.tokens ?? {}) as Record<string, unknown>;
 
@@ -220,8 +224,13 @@ export async function updateAccountStore(
 // ─── HTTP Server ───────────────────────────────────────────
 
 async function start(): Promise<void> {
-  const creds = await readCredentials();
-  if (!creds) throw new Error('credentials.json not found — create a client ID on Google Cloud Console and save the exported JSON as ~/.config/go-easy/credentials.json');
+  const creds = await readCredentials(credentialsSelector);
+  if (!creds) {
+    const hint = credentialsSelector
+      ? `No credentials matching "${credentialsSelector}" in credentials.json — run: go-easy credentials list`
+      : 'credentials.json not found — create a client ID on Google Cloud Console, download the JSON, then run: go-easy credentials set <path-to-downloaded-file>';
+    throw new Error(hint);
+  }
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     // Only handle the callback path
@@ -295,7 +304,7 @@ async function start(): Promise<void> {
       const missingScopes = ALL_SCOPES.filter((s) => !grantedScopes.includes(s));
 
       // Update account store
-      await updateAccountStore(tokenResponse.refresh_token, grantedScopes, email);
+      await updateAccountStore(tokenResponse.refresh_token, grantedScopes, email, creds.clientId);
 
       if (missingScopes.length === 0) {
         // Full success
@@ -361,6 +370,7 @@ async function start(): Promise<void> {
     port,
     pid: process.pid,
     authUrl,
+    credentialsSelector: credentialsSelector ?? null,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + TIMEOUT_MS).toISOString(),
   });

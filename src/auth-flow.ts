@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 import {
   getPendingDir,
   readAccountStore,
+  writeAccountStore,
   readCredentials,
+  readAllCredentials,
   findAccount,
 } from './auth-store.js';
 import { ALL_SCOPES, scopeToService } from './scopes.js';
@@ -39,6 +41,7 @@ interface PendingSession {
   port?: number;
   pid?: number;
   authUrl?: string;
+  credentialsSelector?: string | null;
   startedAt?: string;
   expiresAt?: string;
   email?: string;
@@ -60,7 +63,7 @@ interface PendingSession {
  * - Completed session → return result, clean up
  * - Stale session (dead pid) → clean up, restart
  */
-export async function authAdd(email: string): Promise<AuthFlowStatus> {
+export async function authAdd(email: string, credentialsSelector?: string): Promise<AuthFlowStatus> {
   // Check if already fully configured
   const store = await readAccountStore();
   if (store) {
@@ -70,7 +73,17 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
         account.tokens.combined!.scopes.includes(s)
       );
       if (hasAll) {
-        // Clean up any stale pending file
+        // Stamp clientId onto the account if missing or selector changed
+        const allCreds = await readAllCredentials();
+        const selectedCreds = credentialsSelector
+          ? (isNaN(Number(credentialsSelector))
+              ? allCreds.find((c) => c.name === credentialsSelector)
+              : allCreds[Number(credentialsSelector)])
+          : allCreds[0];
+        if (selectedCreds && account.clientId !== selectedCreds.clientId) {
+          account.clientId = selectedCreds.clientId;
+          await writeAccountStore(store);
+        }
         await cleanupPending(email);
         return {
           status: 'complete',
@@ -84,11 +97,12 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
   }
 
   // Check credentials exist
-  const creds = await readCredentials();
+  const creds = await readCredentials(credentialsSelector);
   if (!creds) {
-    throw new AuthError('AUTH_NO_CREDENTIALS', {
-      message: 'OAuth client credentials not found at ~/.config/go-easy/credentials.json',
-    });
+    const hint = credentialsSelector
+      ? `No credentials matching "${credentialsSelector}" in ~/.config/go-easy/credentials.json`
+      : 'OAuth client credentials not found at ~/.config/go-easy/credentials.json';
+    throw new AuthError('AUTH_NO_CREDENTIALS', { message: hint });
   }
 
   // Check for pending session
@@ -135,6 +149,13 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
 
     // Active session (waiting/started)
     if (pending.status === 'waiting' || pending.status === 'started') {
+      // If credentials selector changed, kill the old server and restart
+      const pendingSelector = pending.credentialsSelector ?? undefined;
+      if (pendingSelector !== credentialsSelector) {
+        if (pending.pid) { try { process.kill(pending.pid, 'SIGTERM'); } catch { /* already dead */ } }
+        await cleanupPending(email);
+        return startAuthServer(email, credentialsSelector);
+      }
       // Check if the server process is still alive
       if (pending.pid && isProcessAlive(pending.pid)) {
         // Check if expired by time
@@ -161,7 +182,7 @@ export async function authAdd(email: string): Promise<AuthFlowStatus> {
   }
 
   // Start new auth flow
-  return startAuthServer(email);
+  return startAuthServer(email, credentialsSelector);
 }
 
 // ─── Internal ──────────────────────────────────────────────
@@ -203,7 +224,7 @@ function isProcessAlive(pid: number): boolean {
  * The child writes its startup info to the pending/<email>.json file.
  * We poll that file briefly to get the authUrl.
  */
-async function startAuthServer(email: string): Promise<AuthFlowStatus> {
+async function startAuthServer(email: string, credentialsSelector?: string): Promise<AuthFlowStatus> {
   // Resolve the auth-server script path
   const thisDir = typeof __dirname !== 'undefined'
     ? __dirname
@@ -223,9 +244,12 @@ async function startAuthServer(email: string): Promise<AuthFlowStatus> {
   await cleanupPending(email);
 
   // Spawn fully detached — no pipes, child survives parent exit
+  const serverArgs = [serverScript, email.toLowerCase().trim(), '0'];
+  if (credentialsSelector) serverArgs.push(credentialsSelector);
+
   const child = spawn(
     process.execPath, // node.exe
-    [serverScript, email.toLowerCase().trim(), '0'],
+    serverArgs,
     {
       detached: true,
       stdio: 'ignore',

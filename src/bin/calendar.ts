@@ -26,7 +26,7 @@ function usage(): never {
     message: 'go-calendar <account> <command> [args...]',
     commands: {
       calendars: 'go-calendar <account> calendars',
-      events: 'go-calendar <account> events <calendarId|id1,id2|*> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]',
+      events: 'go-calendar <account> events <calendarId|id1,id2|*|own> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]',
       event: 'go-calendar <account> event <calendarId> <eventId>',
       create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--type=outOfOffice|workingLocation|focusTime]',
       'create (ooo)': 'go-calendar <account> create <calendarId> --type=outOfOffice --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--decline-message="..."]',
@@ -145,8 +145,11 @@ export async function main(args: string[] = process.argv.slice(2)) {
       case 'events': {
         if (!pos[0]) usage();
         const wildcard = pos[0] === '*';
-        const calIds = wildcard
-          ? (await calendar.listCalendars(auth)).map((c) => c.id)
+        const ownOnly = pos[0] === 'own';
+        const calIds = (wildcard || ownOnly)
+          ? (await calendar.listCalendars(auth))
+              .filter((c) => !ownOnly || c.accessRole === 'owner')
+              .map((c) => c.id)
           : pos[0].split(',');
         const eventsOpts = {
           timeMin: flags.from ?? new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
@@ -161,8 +164,8 @@ export async function main(args: string[] = process.argv.slice(2)) {
         if (calIds.length === 1 && !wildcard) {
           result = await calendar.listEvents(auth, calIds[0], eventsOpts);
         } else {
-          // For wildcard expansion, skip calendars that reject event listing (e.g. holiday feeds).
-          const settled = wildcard
+          // For wildcard/own expansion, skip calendars that reject event listing.
+          const settled = (wildcard || ownOnly)
             ? await Promise.allSettled(calIds.map((id) => calendar.listEvents(auth, id, eventsOpts)))
             : await Promise.all(calIds.map((id) => calendar.listEvents(auth, id, eventsOpts))).then((r) => r.map((v) => ({ status: 'fulfilled' as const, value: v })));
           const items = settled

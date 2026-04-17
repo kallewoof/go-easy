@@ -45,6 +45,10 @@ vi.mock('../src/auth-store.js', () => {
   return {
     readAccountStore: (...args: unknown[]) => mockReadAccountStore(...args),
     readCredentials: (...args: unknown[]) => mockReadCredentials(...args),
+    readAllCredentials: async () => {
+      const creds = await mockReadCredentials();
+      return creds ? [creds] : [];
+    },
     findAccount,
     resolveToken,
   };

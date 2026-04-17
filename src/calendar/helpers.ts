@@ -139,6 +139,7 @@ export function parseCalendar(raw: calendar_v3.Schema$CalendarListEntry): Calend
     primary: raw.primary ?? undefined,
     timeZone: raw.timeZone ?? undefined,
     backgroundColor: raw.backgroundColor ?? undefined,
+    accessRole: raw.accessRole as CalendarInfo['accessRole'] ?? undefined,
   };
 }
 

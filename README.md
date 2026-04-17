@@ -31,14 +31,19 @@ go-easy manages its own OAuth2 tokens in `~/.config/go-easy/`.
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable the Gmail, Drive, and Calendar APIs
-3. Create OAuth2 credentials (Desktop application type)
-4. Save credentials to `~/.config/go-easy/credentials.json`:
+3. Create OAuth2 credentials (Desktop application type) and download the JSON file
+4. Import the credentials:
 
-```json
-{
-  "clientId": "YOUR_CLIENT_ID.apps.googleusercontent.com",
-  "clientSecret": "YOUR_CLIENT_SECRET"
-}
+```bash
+npx go-easy credentials set ~/Downloads/client_secret_xxx.json
+```
+
+To add credentials for a second Google Cloud project (e.g. work and personal):
+
+```bash
+npx go-easy credentials append ~/Downloads/work-creds.json --name work
+npx go-easy credentials append ~/Downloads/personal-creds.json --name personal
+npx go-easy credentials list
 ```
 
 ### Add an account
@@ -49,6 +54,13 @@ npx go-easy auth add you@example.com
 # Open the URL, authorize, then poll:
 npx go-easy auth add you@example.com
 # → { "status": "complete", "email": "you@example.com", "scopes": ["gmail", "drive", "calendar"] }
+```
+
+If you have multiple credential sets, specify which to use:
+
+```bash
+npx go-easy auth add work@company.com --credentials work
+npx go-easy auth add me@gmail.com --credentials personal
 ```
 
 One combined token covers Gmail + Drive + Calendar. The flow is agent-compatible — two separate CLI calls (start + poll), no streaming stdout needed.

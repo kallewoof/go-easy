@@ -112,8 +112,9 @@ export interface CalendarInfo {
   description?: string;
   primary?: boolean;
   timeZone?: string;
-  /** Background color */
   backgroundColor?: string;
+  /** Your access level: 'owner' = your own calendar, 'writer' = shared with edit rights, 'reader'/'freeBusyReader' = shared read-only */
+  accessRole?: 'freeBusyReader' | 'reader' | 'writer' | 'owner';
 }
 
 /** A busy slot in free/busy query results */
