@@ -1,5 +1,5 @@
 {
-  "name": "@marcfargas/go-easy",
+  "name": "go-easy",
   "version": "0.4.0",
   "description": "Google APIs made easy — Gmail, Drive, Calendar for AI agents and humans",
   "type": "module",

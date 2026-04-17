@@ -4,6 +4,7 @@ import {
   buildAuthUrl,
   exchangeCodeForToken,
   updateAccountStore,
+  readCredentials,
 } from '../src/auth-server.js';
 
 // ─── scopeToService ────────────────────────────────────────
@@ -123,6 +124,20 @@ describe('exchangeCodeForToken', () => {
   });
 });
 
+// ─── readCredentials → buildAuthUrl integration ────────────
+
+describe('readCredentials → buildAuthUrl integration', () => {
+  it('Google-emitted installed format produces a defined client_id in the auth URL', async () => {
+    const { readFile } = await import('node:fs/promises');
+    vi.mocked(readFile).mockResolvedValueOnce(
+      JSON.stringify({ installed: { client_id: 'my-client-id', client_secret: 'csec' } }) as never
+    );
+    const creds = await readCredentials();
+    const url = new URL(buildAuthUrl(creds!.clientId, 'http://127.0.0.1:12345/callback', 'user@example.com'));
+    expect(url.searchParams.get('client_id')).toBe('my-client-id');
+  });
+});
+
 // ─── updateAccountStore ────────────────────────────────────
 // vi.mock is hoisted, so this must live at the module's top scope.
 // The factory runs once; individual tests control behaviour via vi.mocked().
@@ -157,7 +172,7 @@ describe('updateAccountStore', () => {
     expect(mockFetch).not.toHaveBeenCalled();
     expect(vi.mocked(writeFile)).toHaveBeenCalled();
     const [writtenPath] = vi.mocked(writeFile).mock.calls[0];
-    expect(String(writtenPath)).toContain('.go-easy');
+    expect(String(writtenPath)).toContain('accounts.json');
   });
 
   it('stores the token under the normalized (lowercase) email address', async () => {

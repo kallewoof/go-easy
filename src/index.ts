@@ -3,8 +3,8 @@
  *
  * @example
  * ```ts
- * import { getAuth } from '@marcfargas/go-easy/auth';
- * import { search, send } from '@marcfargas/go-easy/gmail';
+ * import { getAuth } from 'go-easy/auth';
+ * import { search, send } from 'go-easy/gmail';
  *
  * const auth = await getAuth('gmail', 'marc@blegal.eu');
  * const results = await search(auth, { query: 'is:unread' });

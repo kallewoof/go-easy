@@ -16,7 +16,7 @@ import { marked } from 'marked';
  *
  * @example
  * ```ts
- * import { markdownToHtml } from '@marcfargas/go-easy/gmail';
+ * import { markdownToHtml } from 'go-easy/gmail';
  *
  * const html = markdownToHtml('# Hello\n\nThis is **bold** and _italic_.');
  * ```

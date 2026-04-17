@@ -18,16 +18,26 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { URL, fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
+import { readCredentials } from './auth-store.js';
 
 // ─── Constants ─────────────────────────────────────────────
 
 const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes (D6)
-const GO_EASY_DIR = join(homedir(), '.go-easy');
+
+function resolveConfigDir(): string {
+  if (process.env['GO_EASY_DIR']) return process.env['GO_EASY_DIR'];
+  const home = homedir();
+  const os = platform();
+  if (os === 'win32') return join(process.env['APPDATA'] ?? join(home, 'AppData', 'Roaming'), 'go-easy');
+  if (os === 'darwin') return join(home, 'Library', 'Application Support', 'go-easy');
+  return join(process.env['XDG_CONFIG_HOME'] ?? join(home, '.config'), 'go-easy');
+}
+
+const GO_EASY_DIR = resolveConfigDir();
 const PENDING_DIR = join(GO_EASY_DIR, 'pending');
-const CREDENTIALS_FILE = join(GO_EASY_DIR, 'credentials.json');
 const ACCOUNTS_FILE = join(GO_EASY_DIR, 'accounts.json');
 
 // All scopes requested by default (D2)
@@ -91,10 +101,7 @@ async function writePending(data: Record<string, unknown>): Promise<void> {
   await writeFile(pendingFile(), JSON.stringify(data, null, 2), 'utf-8');
 }
 
-async function readCredentials(): Promise<{ clientId: string; clientSecret: string }> {
-  const raw = await readFile(CREDENTIALS_FILE, 'utf-8');
-  return JSON.parse(raw);
-}
+export { readCredentials };
 
 export function scopeToService(scope: string): string {
   if (scope === 'https://mail.google.com/') return 'gmail';
@@ -214,6 +221,7 @@ export async function updateAccountStore(
 
 async function start(): Promise<void> {
   const creds = await readCredentials();
+  if (!creds) throw new Error('credentials.json not found — create a client ID on Google Cloud Console and save the exported JSON as ~/.config/go-easy/credentials.json');
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     // Only handle the callback path
