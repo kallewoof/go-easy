@@ -141,9 +141,10 @@ export async function main(args: string[] = process.argv.slice(2)) {
         result = await calendar.listCalendars(auth);
         break;
 
-      case 'events':
+      case 'events': {
         if (!pos[0]) usage();
-        result = await calendar.listEvents(auth, pos[0], {
+        const calIds = pos[0].split(',');
+        const eventsOpts = {
           timeMin: flags.from ?? new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
           timeMax: flags.to,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
@@ -152,8 +153,16 @@ export async function main(args: string[] = process.argv.slice(2)) {
           eventTypes: flags['event-types']
             ? flags['event-types'].split(',') as calendar.EventType[]
             : undefined,
-        });
+        };
+        if (calIds.length === 1) {
+          result = await calendar.listEvents(auth, calIds[0], eventsOpts);
+        } else {
+          const allResults = await Promise.all(calIds.map((id) => calendar.listEvents(auth, id, eventsOpts)));
+          const items = allResults.flatMap((r) => r.items).sort((a, b) => a.start.localeCompare(b.start));
+          result = { items: eventsOpts.maxResults ? items.slice(0, eventsOpts.maxResults) : items };
+        }
         break;
+      }
 
       case 'event':
         if (!pos[0] || !pos[1]) usage();

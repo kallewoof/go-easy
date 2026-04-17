@@ -147,6 +147,45 @@ describe('main()', () => {
     );
   });
 
+  it('events — multi-calendar: calls listEvents once per calendar ID', async () => {
+    await main([ACC, 'events', 'primary,work@example.com', '--from=2026-01-01']);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'work@example.com', expect.any(Object));
+  });
+
+  it('events — multi-calendar: merges and sorts by start date', async () => {
+    vi.mocked(calendarModule.listEvents)
+      .mockResolvedValueOnce({ items: [
+        { id: 'b', summary: 'B', start: '2026-01-03', end: '2026-01-03' },
+        { id: 'd', summary: 'D', start: '2026-01-05', end: '2026-01-05' },
+      ] })
+      .mockResolvedValueOnce({ items: [
+        { id: 'a', summary: 'A', start: '2026-01-01', end: '2026-01-01' },
+        { id: 'c', summary: 'C', start: '2026-01-04', end: '2026-01-04' },
+      ] });
+    await main([ACC, 'events', 'primary,work@example.com', '--from=2026-01-01']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.items.map((e: { id: string }) => e.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('events — multi-calendar: respects --max as overall cap after aggregation', async () => {
+    vi.mocked(calendarModule.listEvents)
+      .mockResolvedValueOnce({ items: [
+        { id: 'b', summary: 'B', start: '2026-01-03', end: '2026-01-03' },
+        { id: 'd', summary: 'D', start: '2026-01-05', end: '2026-01-05' },
+      ] })
+      .mockResolvedValueOnce({ items: [
+        { id: 'a', summary: 'A', start: '2026-01-01', end: '2026-01-01' },
+        { id: 'c', summary: 'C', start: '2026-01-04', end: '2026-01-04' },
+      ] });
+    await main([ACC, 'events', 'primary,work@example.com', '--from=2026-01-01', '--max=2']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output.items).toHaveLength(2);
+    expect(output.items[0].id).toBe('a');
+    expect(output.items[1].id).toBe('b');
+  });
+
   it('event — fetches single event', async () => {
     await main([ACC, 'event', 'primary', 'evt1']);
     expect(vi.mocked(calendarModule.getEvent)).toHaveBeenCalledWith('fake-auth', 'primary', 'evt1');
