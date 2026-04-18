@@ -63,6 +63,8 @@ export interface BirthdayProperties {
 /** A simplified calendar event */
 export interface CalendarEvent {
   id: string;
+  /** Calendar this event belongs to — use this as calendarId when updating */
+  calendarId?: string;
   summary: string;
   description?: string;
   /** ISO 8601 datetime or date (for all-day events) */

@@ -82,9 +82,19 @@ export class AuthError extends GoEasyError {
 
 /** Google API returned 404 */
 export class NotFoundError extends GoEasyError {
-  constructor(resource: string, id: string, cause?: unknown) {
+  public readonly hint?: string;
+
+  constructor(resource: string, id: string, cause?: unknown, hint?: string) {
     super(`${resource} not found: ${id}`, 'NOT_FOUND', cause);
     this.name = 'NotFoundError';
+    this.hint = hint;
+  }
+
+  override toJSON() {
+    return {
+      ...super.toJSON(),
+      ...(this.hint ? { hint: this.hint } : {}),
+    };
   }
 }
 

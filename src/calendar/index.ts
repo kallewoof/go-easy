@@ -117,8 +117,10 @@ export async function listEvents(
       eventTypes,
     });
 
+    const items = (res.data.items ?? []).map(parseEvent);
+    items.forEach((e) => { e.calendarId = calendarId; });
     return {
-      items: (res.data.items ?? []).map(parseEvent),
+      items,
       nextPageToken: res.data.nextPageToken ?? undefined,
     };
   } catch (err) {
@@ -202,6 +204,16 @@ export async function updateEvent(
       htmlLink: res.data.htmlLink ?? undefined,
     };
   } catch (err) {
+    if (err instanceof GoEasyError) throw err;
+    const gErr = err as { code?: number; message?: string };
+    if (gErr.code === 404) {
+      throw new NotFoundError(
+        'event',
+        `updateEvent ${eventId}`,
+        err,
+        'Event not found in this calendar. If you listed events from multiple calendars, check the calendarId field on the event — the event may belong to a different calendar than the one you specified.'
+      );
+    }
     handleApiError(err, `updateEvent ${eventId}`);
   }
 }
