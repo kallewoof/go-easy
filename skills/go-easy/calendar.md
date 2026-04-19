@@ -82,7 +82,7 @@ Use the `recurringEventId` from a listed instance to find its parent.
 Create a new event.
 
 **Required flags:** `--summary`, `--start`, `--end`
-**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`, `--type` + type-specific flags
+**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`, `--recurrence`, `--reminder`, `--type` + type-specific flags
 
 ```bash
 # Regular timed event
@@ -167,7 +167,7 @@ npx go-calendar <account> update primary <eventId> \
 Returns: `{ ok: true, id, htmlLink? }`
 
 **Required flags:** `--summary`, `--start`, `--end` (always required even for PATCH — Google API needs them)
-**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`
+**Optional flags:** `--description`, `--location`, `--tz`, `--attendees`, `--all-day`, `--recurrence`, `--reminder`
 
 #### delete ⚠️ DESTRUCTIVE
 Delete an event. Requires `--confirm`.
@@ -282,9 +282,28 @@ All-day end dates are **exclusive** (Google Calendar convention):
 
 ### Recurring events
 
-Recurring events are not directly supported for creation/update.
-When listing events, recurring events are expanded into individual instances by default (`singleEvents=true`).
-Each instance has a `recurringEventId` pointing to the parent definition.
+Use `--recurrence=<iCal>` on `create`/`update`. Pipe-separate multiple entries.
+**`--tz` is required when using `--recurrence`** — the API needs a named timezone to compute future occurrences correctly.
+
+```bash
+--recurrence="RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" --tz=Asia/Tokyo
+--recurrence="RRULE:FREQ=WEEKLY;BYDAY=MO|EXDATE:20260427T100000Z" --tz=Europe/Madrid
+--recurrence=   # clears recurrence (makes event one-time, --tz not required)
+```
+
+Listed events are expanded into instances (`singleEvents=true`). Each instance carries `recurringEventId` pointing to the series master, which has the `recurrence` string array.
+
+### Reminders
+
+`--reminder=<value>` on `create`/`update`:
+
+```
+120          → popup 120 min before
+120:email    → email 120 min before
+120:popup,30:email  → two reminders
+default      → use calendar's default reminders
+none         → disable all reminders
+```
 
 ## Types
 
@@ -303,6 +322,8 @@ interface CalendarEvent {
   status?: 'confirmed' | 'tentative' | 'cancelled';
   htmlLink?: string;
   recurringEventId?: string;  // parent recurring event (for instances)
+  recurrence?: string[];      // iCal rules — only on series master
+  reminders?: { useDefault: boolean; overrides?: { method: 'email'|'popup'; minutes: number }[] };
   allDay?: boolean;
   organizer?: { email: string; displayName?: string };
   creator?: { email: string; displayName?: string };
@@ -353,6 +374,13 @@ interface CalendarInfo {
   timeZone?: string;
   backgroundColor?: string;
   accessRole?: 'freeBusyReader' | 'reader' | 'writer' | 'owner';
+}
+
+interface WriteResult {
+  ok: true;
+  id: string;
+  htmlLink?: string;
+  recurrence?: string[];  // echo of stored rules — absent means recurrence was not applied
 }
 
 interface FreeBusyResult {

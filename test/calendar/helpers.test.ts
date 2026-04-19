@@ -181,6 +181,55 @@ describe('parseEvent', () => {
     expect(event.birthday!.type).toBe('birthday');
   });
 
+  it('parses reminders from event', () => {
+    const event = parseEvent({
+      id: 'evt-r',
+      summary: 'Meeting',
+      start: { dateTime: '2026-02-10T10:00:00Z' },
+      end: { dateTime: '2026-02-10T11:00:00Z' },
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 120 }] },
+    });
+
+    expect(event.reminders?.useDefault).toBe(false);
+    expect(event.reminders?.overrides).toEqual([{ method: 'popup', minutes: 120 }]);
+  });
+
+  it('parses default reminders flag', () => {
+    const event = parseEvent({
+      id: 'evt-rd',
+      summary: 'Meeting',
+      start: { dateTime: '2026-02-10T10:00:00Z' },
+      end: { dateTime: '2026-02-10T11:00:00Z' },
+      reminders: { useDefault: true },
+    });
+
+    expect(event.reminders?.useDefault).toBe(true);
+    expect(event.reminders?.overrides).toBeUndefined();
+  });
+
+  it('parses recurrence rules from a recurring series master', () => {
+    const event = parseEvent({
+      id: 'rec-1',
+      summary: 'Weekly Standup',
+      start: { dateTime: '2026-02-10T10:00:00+01:00' },
+      end: { dateTime: '2026-02-10T10:30:00+01:00' },
+      recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'],
+    });
+
+    expect(event.recurrence).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR']);
+  });
+
+  it('regular events have no recurrence field', () => {
+    const event = parseEvent({
+      id: 'evt-single',
+      summary: 'One-off',
+      start: { dateTime: '2026-02-10T10:00:00Z' },
+      end: { dateTime: '2026-02-10T11:00:00Z' },
+    });
+
+    expect(event.recurrence).toBeUndefined();
+  });
+
   it('regular events have eventType default', () => {
     const event = parseEvent({
       id: 'evt-3',
@@ -382,5 +431,95 @@ describe('buildEventBody', () => {
     });
 
     expect(body.eventType).toBeUndefined();
+  });
+
+  it('builds recurring event body with recurrence rules', () => {
+    const body = buildEventBody({
+      summary: 'Weekly Standup',
+      start: '2026-02-10T10:00:00+01:00',
+      end: '2026-02-10T10:30:00+01:00',
+      recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'],
+    });
+
+    expect(body.recurrence).toEqual(['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR']);
+  });
+
+  it('builds recurring event with multiple recurrence entries', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+      recurrence: ['RRULE:FREQ=WEEKLY;BYDAY=MO', 'EXDATE:20260420T100000Z'],
+    });
+
+    expect(body.recurrence).toHaveLength(2);
+    expect(body.recurrence![0]).toBe('RRULE:FREQ=WEEKLY;BYDAY=MO');
+    expect(body.recurrence![1]).toBe('EXDATE:20260420T100000Z');
+  });
+
+  it('clears recurrence rules when passed empty array', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+      recurrence: [],
+    });
+
+    expect(body.recurrence).toEqual([]);
+  });
+
+  it('omits recurrence field when not provided', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+    });
+
+    expect(body.recurrence).toBeUndefined();
+  });
+
+  it('builds event body with popup reminder', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 120 }] },
+    });
+
+    expect(body.reminders?.useDefault).toBe(false);
+    expect(body.reminders?.overrides).toEqual([{ method: 'popup', minutes: 120 }]);
+  });
+
+  it('builds event body with multiple reminders', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+      reminders: { useDefault: false, overrides: [{ method: 'email', minutes: 1440 }, { method: 'popup', minutes: 30 }] },
+    });
+
+    expect(body.reminders?.overrides).toHaveLength(2);
+  });
+
+  it('builds event body using calendar default reminders', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+      reminders: { useDefault: true },
+    });
+
+    expect(body.reminders?.useDefault).toBe(true);
+    expect(body.reminders?.overrides).toBeUndefined();
+  });
+
+  it('omits reminders field when not provided', () => {
+    const body = buildEventBody({
+      summary: 'Meeting',
+      start: '2026-02-10T10:00:00Z',
+      end: '2026-02-10T11:00:00Z',
+    });
+
+    expect(body.reminders).toBeUndefined();
   });
 });

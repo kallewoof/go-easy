@@ -28,11 +28,11 @@ function usage(): never {
       calendars: 'go-calendar <account> calendars',
       events: 'go-calendar <account> events <calendarId|id1,id2|*|own> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]',
       event: 'go-calendar <account> event <calendarId> <eventId>',
-      create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--type=outOfOffice|workingLocation|focusTime]',
+      create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--type=outOfOffice|workingLocation|focusTime] [--recurrence=RRULE:FREQ=WEEKLY;BYDAY=MO] [--reminder=120|120:popup|120:email,30:popup|default|none]',
       'create (ooo)': 'go-calendar <account> create <calendarId> --type=outOfOffice --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--decline-message="..."]',
       'create (wl)': 'go-calendar <account> create <calendarId> --type=workingLocation --summary="..." --start=<dt> --end=<dt> --wl-type=homeOffice|officeLocation|customLocation [--wl-label="..."] [--wl-building=...] [--wl-floor=...] [--wl-desk=...]',
       'create (focus)': 'go-calendar <account> create <calendarId> --type=focusTime --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--chat-status=doNotDisturb] [--decline-message="..."]',
-      update: 'go-calendar <account> update <calendarId> <eventId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>]',
+      update: 'go-calendar <account> update <calendarId> <eventId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--recurrence=RRULE:FREQ=WEEKLY;BYDAY=MO] [--reminder=120|120:popup|120:email,30:popup|default|none]',
       delete: 'go-calendar <account> delete <calendarId> <eventId> [--confirm]',
       freebusy: 'go-calendar <account> freebusy <calendarId1,calendarId2> --from=<dt> --to=<dt>',
     },
@@ -59,6 +59,48 @@ export function parseFlags(args: string[]): Record<string, string> {
 /** Get positional args (non-flag) */
 export function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
+}
+
+const EVENT_FLAGS = ['summary', 'description', 'start', 'end', 'tz', 'location', 'attendees',
+  'all-day', 'type', 'recurrence', 'reminder', 'auto-decline', 'decline-message', 'chat-status',
+  'wl-type', 'wl-label', 'wl-building', 'wl-floor', 'wl-desk'];
+
+/** Valid flags per command (confirm is always allowed) */
+export const VALID_FLAGS: Record<string, string[]> = {
+  calendars: [],
+  events: ['from', 'to', 'max', 'query', 'page-token', 'event-types'],
+  event: [],
+  create: EVENT_FLAGS,
+  update: EVENT_FLAGS,
+  delete: [],
+  freebusy: ['from', 'to'],
+};
+
+/** Throw if any flag is not in the allowed set for this command */
+export function assertKnownFlags(command: string, flags: Record<string, string>): void {
+  const valid = VALID_FLAGS[command] ?? [];
+  const allowed = new Set([...valid, 'confirm']);
+  const unknown = Object.keys(flags).filter((k) => !allowed.has(k));
+  if (unknown.length > 0) {
+    throw Object.assign(
+      new Error(`Unknown flag(s) for '${command}': ${unknown.map((f) => `--${f}`).join(', ')}. Allowed: ${valid.map((f) => `--${f}`).join(', ')}`),
+      { code: 'UNKNOWN_FLAG' }
+    );
+  }
+}
+
+/**
+ * Parse --reminder flag value into a reminders object.
+ * Formats: "120" | "120:popup" | "120:email,30:popup" | "default" | "none"
+ */
+export function parseReminderFlag(value: string): calendar.EventOptions['reminders'] {
+  if (value === 'default') return { useDefault: true };
+  if (value === 'none') return { useDefault: false, overrides: [] };
+  const overrides = value.split(',').map((part) => {
+    const [mins, method = 'popup'] = part.split(':');
+    return { method: method as 'email' | 'popup', minutes: parseInt(mins, 10) };
+  });
+  return { useDefault: false, overrides };
 }
 
 /** Build special event type properties from CLI flags */
@@ -135,6 +177,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const auth = await getAuth('calendar', account);
 
   try {
+    assertKnownFlags(command, flags);
     let result: unknown;
 
     switch (command) {
@@ -194,6 +237,8 @@ export async function main(args: string[] = process.argv.slice(2)) {
           attendees: flags.attendees?.split(','),
           allDay: 'all-day' in flags,
           eventType: flags.type as calendar.EventOptions['eventType'],
+          recurrence: flags.recurrence ? flags.recurrence.split('|') : undefined,
+          reminders: flags.reminder ? parseReminderFlag(flags.reminder) : undefined,
           ...buildSpecialEventFlags(flags),
         };
         result = await calendar.createEvent(auth, pos[0], createOpts);
@@ -213,6 +258,8 @@ export async function main(args: string[] = process.argv.slice(2)) {
         if ('location' in flags) updateOpts.location = flags.location;
         if ('attendees' in flags) updateOpts.attendees = flags.attendees.split(',');
         if ('all-day' in flags) updateOpts.allDay = true;
+        if ('recurrence' in flags) updateOpts.recurrence = flags.recurrence.split('|');
+        if ('reminder' in flags) updateOpts.reminders = parseReminderFlag(flags.reminder);
         if ('type' in flags) {
           updateOpts.eventType = flags.type as calendar.EventOptions['eventType'];
           Object.assign(updateOpts, buildSpecialEventFlags(flags));

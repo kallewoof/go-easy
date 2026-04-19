@@ -23,6 +23,7 @@ import type {
   OutOfOfficeProperties,
   FocusTimeProperties,
   BirthdayProperties,
+  ReminderOverride,
 } from './types.js';
 
 export type {
@@ -38,6 +39,7 @@ export type {
   OutOfOfficeProperties,
   FocusTimeProperties,
   BirthdayProperties,
+  ReminderOverride,
 };
 export type { Attendee, FreeBusySlot } from './types.js';
 
@@ -156,6 +158,12 @@ export async function createEvent(
   calendarId: string,
   opts: EventOptions
 ): Promise<WriteResult> {
+  if (opts.recurrence?.length && !opts.timeZone) {
+    throw new GoEasyError(
+      'Recurring events require a named timezone (e.g. "Asia/Tokyo"). Pass timeZone alongside recurrence.',
+      'INVALID_OPTIONS'
+    );
+  }
   const cal = calendarApi(auth);
   const body = buildEventBody(opts);
 
@@ -169,6 +177,7 @@ export async function createEvent(
       ok: true,
       id: res.data.id ?? '',
       htmlLink: res.data.htmlLink ?? undefined,
+      recurrence: res.data.recurrence ?? undefined,
     };
   } catch (err) {
     handleApiError(err, 'createEvent');
@@ -186,6 +195,12 @@ export async function updateEvent(
   eventId: string,
   opts: EventOptions
 ): Promise<WriteResult> {
+  if (opts.recurrence?.length && !opts.timeZone) {
+    throw new GoEasyError(
+      'Recurring events require a named timezone (e.g. "Asia/Tokyo"). Pass timeZone alongside recurrence.',
+      'INVALID_OPTIONS'
+    );
+  }
   const cal = calendarApi(auth);
   const body = buildEventBody(opts);
 
@@ -202,6 +217,7 @@ export async function updateEvent(
       ok: true,
       id: res.data.id ?? '',
       htmlLink: res.data.htmlLink ?? undefined,
+      recurrence: res.data.recurrence ?? undefined,
     };
   } catch (err) {
     if (err instanceof GoEasyError) throw err;

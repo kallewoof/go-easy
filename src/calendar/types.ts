@@ -80,6 +80,10 @@ export interface CalendarEvent {
   htmlLink?: string;
   /** For recurring event instances */
   recurringEventId?: string;
+  /** Reminders set on this event */
+  reminders?: { useDefault: boolean; overrides?: ReminderOverride[] };
+  /** Recurrence rules (iCal RRULE/EXRULE/RDATE/EXDATE strings) — only present on the series master event */
+  recurrence?: string[];
   /** Whether this is an all-day event */
   allDay?: boolean;
   /** Organizer */
@@ -158,6 +162,13 @@ export interface ListEventsOptions {
   eventTypes?: EventType[];
 }
 
+/** A single reminder override */
+export interface ReminderOverride {
+  method: 'email' | 'popup';
+  /** Minutes before event start (0–40320) */
+  minutes: number;
+}
+
 /** Options for creating/updating an event */
 export interface EventOptions {
   summary: string;
@@ -185,6 +196,18 @@ export interface EventOptions {
   workingLocation?: WorkingLocationProperties;
   /** Focus time properties (required when eventType is 'focusTime') */
   focusTime?: FocusTimeProperties;
+  /**
+   * Recurrence rules as iCal strings (RRULE, EXRULE, RDATE, EXDATE).
+   * Example: ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"]
+   * Pass an empty array to remove all recurrence rules.
+   */
+  recurrence?: string[];
+  /**
+   * Reminders for this event.
+   * useDefault: true → use calendar's default reminders.
+   * overrides: explicit list (replaces all existing reminders).
+   */
+  reminders?: { useDefault: boolean; overrides?: ReminderOverride[] };
 }
 
 /** Paginated list result */
@@ -198,4 +221,6 @@ export interface WriteResult {
   ok: true;
   id: string;
   htmlLink?: string;
+  /** Recurrence rules as stored by the API — only present when the event has recurrence */
+  recurrence?: string[];
 }

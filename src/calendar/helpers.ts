@@ -12,6 +12,7 @@ import type {
   OutOfOfficeProperties,
   FocusTimeProperties,
   BirthdayProperties,
+  ReminderOverride,
 } from './types.js';
 
 /** Parse a raw Calendar API event into our CalendarEvent shape */
@@ -31,6 +32,16 @@ export function parseEvent(raw: calendar_v3.Schema$Event): CalendarEvent {
     status: raw.status as CalendarEvent['status'] ?? undefined,
     htmlLink: raw.htmlLink ?? undefined,
     recurringEventId: raw.recurringEventId ?? undefined,
+    recurrence: raw.recurrence ?? undefined,
+    reminders: raw.reminders
+      ? {
+          useDefault: raw.reminders.useDefault ?? false,
+          overrides: raw.reminders.overrides?.map((o) => ({
+            method: (o.method ?? 'popup') as ReminderOverride['method'],
+            minutes: o.minutes ?? 0,
+          })),
+        }
+      : undefined,
     allDay: isAllDay,
     organizer: raw.organizer
       ? { email: raw.organizer.email ?? '', displayName: raw.organizer.displayName ?? undefined }
@@ -158,6 +169,8 @@ export function buildEventBody(
     outOfOffice?: OutOfOfficeProperties;
     workingLocation?: WorkingLocationProperties;
     focusTime?: FocusTimeProperties;
+    recurrence?: string[];
+    reminders?: { useDefault: boolean; overrides?: ReminderOverride[] };
   }
 ): calendar_v3.Schema$Event {
   const event: calendar_v3.Schema$Event = {
@@ -178,6 +191,17 @@ export function buildEventBody(
 
   if (opts.attendees?.length) {
     event.attendees = opts.attendees.map((email) => ({ email }));
+  }
+
+  if (opts.recurrence !== undefined) {
+    event.recurrence = opts.recurrence;
+  }
+
+  if (opts.reminders !== undefined) {
+    event.reminders = {
+      useDefault: opts.reminders.useDefault,
+      overrides: opts.reminders.overrides?.map((o) => ({ method: o.method, minutes: o.minutes })),
+    };
   }
 
   // Special event types

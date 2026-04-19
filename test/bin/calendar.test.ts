@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseFlags, positional, buildSpecialEventFlags, main } from '../../src/bin/calendar.js';
+import { parseFlags, positional, buildSpecialEventFlags, assertKnownFlags, VALID_FLAGS, parseReminderFlag, main } from '../../src/bin/calendar.js';
 import * as calendarModule from '../../src/calendar/index.js';
 import { setSafetyContext } from '../../src/safety.js';
 
@@ -80,6 +80,70 @@ describe('buildSpecialEventFlags', () => {
       type: 'workingLocation', 'wl-type': 'customLocation', 'wl-label': 'Home Studio',
     });
     expect(result.workingLocation?.customLocation).toMatchObject({ label: 'Home Studio' });
+  });
+});
+
+// ─── parseReminderFlag ─────────────────────────────────────
+
+describe('parseReminderFlag', () => {
+  it('"default" → useDefault: true', () => {
+    expect(parseReminderFlag('default')).toEqual({ useDefault: true });
+  });
+
+  it('"none" → empty overrides', () => {
+    expect(parseReminderFlag('none')).toEqual({ useDefault: false, overrides: [] });
+  });
+
+  it('"120" → popup override at 120 min', () => {
+    expect(parseReminderFlag('120')).toEqual({
+      useDefault: false,
+      overrides: [{ method: 'popup', minutes: 120 }],
+    });
+  });
+
+  it('"120:email" → email override', () => {
+    expect(parseReminderFlag('120:email')).toEqual({
+      useDefault: false,
+      overrides: [{ method: 'email', minutes: 120 }],
+    });
+  });
+
+  it('"120:popup,30:email" → two overrides', () => {
+    const result = parseReminderFlag('120:popup,30:email');
+    expect(result.overrides).toHaveLength(2);
+    expect(result.overrides![0]).toEqual({ method: 'popup', minutes: 120 });
+    expect(result.overrides![1]).toEqual({ method: 'email', minutes: 30 });
+  });
+});
+
+// ─── assertKnownFlags ──────────────────────────────────────
+
+describe('assertKnownFlags', () => {
+  it('passes when all flags are valid', () => {
+    expect(() => assertKnownFlags('events', { from: '2026-01-01', max: '10' })).not.toThrow();
+  });
+
+  it('always allows --confirm regardless of command', () => {
+    expect(() => assertKnownFlags('calendars', { confirm: 'true' })).not.toThrow();
+  });
+
+  it('throws UNKNOWN_FLAG for unrecognised flag', () => {
+    expect(() => assertKnownFlags('events', { bogus: 'x' }))
+      .toThrow('Unknown flag(s)');
+    try { assertKnownFlags('events', { bogus: 'x' }); } catch (e: unknown) {
+      expect((e as { code: string }).code).toBe('UNKNOWN_FLAG');
+    }
+  });
+
+  it('lists the unknown flag name in the error message', () => {
+    expect(() => assertKnownFlags('create', { bogus: 'x' }))
+      .toThrow('--bogus');
+  });
+
+  it('VALID_FLAGS covers all known commands', () => {
+    for (const cmd of ['calendars', 'events', 'event', 'create', 'update', 'delete', 'freebusy']) {
+      expect(VALID_FLAGS).toHaveProperty(cmd);
+    }
   });
 });
 
@@ -225,6 +289,15 @@ describe('main()', () => {
     );
   });
 
+  it('create --reminder — passes reminders to createEvent', async () => {
+    await main([ACC, 'create', 'primary', '--summary=Meeting', '--start=2026-01-01', '--end=2026-01-02',
+      '--reminder=120:popup']);
+    expect(vi.mocked(calendarModule.createEvent)).toHaveBeenCalledWith(
+      'fake-auth', 'primary',
+      expect.objectContaining({ reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 120 }] } }),
+    );
+  });
+
   it('create with --type=outOfOffice — includes OOO properties', async () => {
     await main([ACC, 'create', 'primary', '--summary=OOO', '--start=2026-01-01', '--end=2026-01-02',
       '--type=outOfOffice', '--auto-decline=declineAllConflictingInvitations']);
@@ -267,6 +340,27 @@ describe('main()', () => {
     await expect(main([ACC, 'nope'])).rejects.toThrow('exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  // ─── Unknown flag rejection per command ───────────────────
+  const unknownFlagCases: [string, string[]][] = [
+    ['calendars', []],
+    ['events',   ['primary']],
+    ['event',    ['primary', 'evt1']],
+    ['create',   ['primary', '--summary=X', '--start=S', '--end=E']],
+    ['update',   ['primary', 'evt1', '--summary=X', '--start=S', '--end=E']],
+    ['delete',   ['primary', 'evt1']],
+    ['freebusy', ['primary', '--from=2026-01-01', '--to=2026-01-31']],
+  ];
+
+  for (const [cmd, baseArgs] of unknownFlagCases) {
+    it(`${cmd} — rejects unknown flag with UNKNOWN_FLAG error`, async () => {
+      await expect(main([ACC, cmd, ...baseArgs, '--bogus=value'])).rejects.toThrow('exit');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const err = JSON.parse(errSpy.mock.calls[0][0]);
+      expect(err.error).toBe('UNKNOWN_FLAG');
+      expect(err.message).toContain('--bogus');
+    });
+  }
 
   it('safety context — blocks without --confirm', async () => {
     await main([ACC, 'delete', 'primary', 'evt1']);
