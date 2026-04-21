@@ -33,6 +33,16 @@ describe('parseFlags', () => {
   it('preserves values containing equals signs', () => {
     expect(parseFlags(['--summary=Meet=Greet'])).toEqual({ summary: 'Meet=Greet' });
   });
+
+  it('parses --key value (space-separated)', () => {
+    expect(parseFlags(['--max', '10'])).toEqual({ max: '10' });
+    expect(parseFlags(['*', '--max', '10'])).toEqual({ max: '10' });
+    expect(parseFlags(['--from', '2026-01-01', '--to', '2026-01-31'])).toEqual({ from: '2026-01-01', to: '2026-01-31' });
+  });
+
+  it('does not consume next --flag as value for bare flag', () => {
+    expect(parseFlags(['--all-day', '--summary=Test'])).toEqual({ 'all-day': 'true', summary: 'Test' });
+  });
 });
 
 describe('positional', () => {
