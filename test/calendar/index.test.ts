@@ -122,6 +122,7 @@ describe('listEvents', () => {
     const result = await listEvents(fakeAuth, 'primary');
     expect(result.items).toEqual([]);
   });
+
 });
 
 describe('getEvent', () => {

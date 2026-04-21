@@ -28,6 +28,11 @@ export interface GmailMessage {
   rfc822MessageId?: string;
 }
 
+/** A cached message entry with fetch timestamp */
+export interface GmailCacheEntry extends GmailMessage {
+  fetched_at: string;
+}
+
 /** A thread (conversation) */
 export interface GmailThread {
   id: string;

@@ -29,6 +29,11 @@ vi.mock('../../src/gmail/index.js', () => ({
   getAttachmentContent: vi.fn().mockResolvedValue(Buffer.from('attach')),
   sanitizeEmailHtml: vi.fn((html: string) => `sanitized:${html}`),
 }));
+vi.mock('../../src/gmail/cache.js', () => ({
+  cacheMessages: vi.fn(),
+  getCachedMessage: vi.fn(),
+  queryCache: vi.fn().mockReturnValue([]),
+}));
 vi.mock('../../src/bin/gmail-flags.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../../src/bin/gmail-flags.js')>();
   return { parseFlags: orig.parseFlags, readBodyFlags: vi.fn().mockReturnValue({}) };

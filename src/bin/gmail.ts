@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as gmail from '../gmail/index.js';
+import { cacheMessages, getCachedMessage, queryCache } from '../gmail/cache.js';
 import { parseFlags, readBodyFlags } from './gmail-flags.js';
 
 function usage(): never {
@@ -34,7 +35,9 @@ function usage(): never {
     error: 'USAGE',
     message: 'go-gmail <account> <command> [args...]',
     commands: {
-      search: 'go-gmail <account> search "<query>" [--max=N] [--page-token=<token>]',
+      search: 'go-gmail <account> search "<query>" [--max=N] [--page-token=<token>]  — fetch from Gmail, cache results, omit body',
+      read: 'go-gmail <account> read <messageId>  — return full cached message including body',
+      query: 'go-gmail <account> query "<text>"  — search local cache (no API call)',
       get: 'go-gmail <account> get <messageId> [--format=eml|text|html|sane-html] [--output=<path>] [--b64encode]',
       thread: 'go-gmail <account> thread <threadId> [--format=mbox] [--output=<path>] [--b64encode]',
       labels: 'go-gmail <account> labels',
@@ -60,6 +63,15 @@ function usage(): never {
 /** Get positional args (non-flag) */
 export function positional(args: string[]): string[] {
   return args.filter((a) => !a.startsWith('--'));
+}
+
+/** Strip body from a message and add a hint for retrieving it. */
+function stripBody<T extends { body: unknown; id: string }>(
+  msg: T,
+  account: string
+): Omit<T, 'body'> & { read_body_cmd: string } {
+  const { body: _, ...rest } = msg;
+  return { ...rest, read_body_cmd: `npx go-gmail ${account} read ${msg.id}` };
 }
 
 /**
@@ -133,13 +145,19 @@ export async function main(args: string[] = process.argv.slice(2)) {
         result = { email: await gmail.getProfile(auth) };
         break;
 
-      case 'search':
-        result = await gmail.search(auth, {
+      case 'search': {
+        const searchResult = await gmail.search(auth, {
           query: pos[0] ?? '',
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           pageToken: flags['page-token'],
         });
+        cacheMessages(account, searchResult.items);
+        result = {
+          ...searchResult,
+          items: searchResult.items.map((m) => stripBody(m, account)),
+        };
         break;
+      }
 
       case 'get': {
         if (!pos[0]) usage();
@@ -162,7 +180,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
           result = handleRawOutput(Buffer.from(content, 'utf-8'), fmt, flags);
           if (result === undefined) return; // already written to stdout
         } else {
-          result = await gmail.getMessage(auth, pos[0]);
+          const msg = await gmail.getMessage(auth, pos[0]);
+          cacheMessages(account, [msg]);
+          result = stripBody(msg, account);
         }
         break;
       }
@@ -175,7 +195,12 @@ export async function main(args: string[] = process.argv.slice(2)) {
           result = handleRawOutput(buf, 'mbox', flags);
           if (result === undefined) return; // already written to stdout
         } else {
-          result = await gmail.getThread(auth, pos[0]);
+          const thread = await gmail.getThread(auth, pos[0]);
+          cacheMessages(account, thread.messages);
+          result = {
+            ...thread,
+            messages: thread.messages.map((m) => stripBody(m, account)),
+          };
         }
         break;
 
@@ -273,6 +298,31 @@ export async function main(args: string[] = process.argv.slice(2)) {
         const buf = await gmail.getAttachmentContent(auth, pos[0], pos[1]);
         // Output base64 for binary safety
         result = { data: buf.toString('base64'), size: buf.length };
+        break;
+      }
+
+      case 'read': {
+        if (!pos[0]) usage();
+        const cached = getCachedMessage(account, pos[0]);
+        if (!cached) {
+          console.error(JSON.stringify({
+            error: 'NOT_CACHED',
+            message: `Message ${pos[0]} not found in local cache.`,
+            hint: `Run: npx go-gmail ${account} search "<query>" to populate the cache`,
+          }, null, 2));
+          process.exit(1);
+        }
+        result = cached;
+        break;
+      }
+
+      case 'query': {
+        const entries = queryCache(account, pos[0]);
+        result = {
+          items: entries.map((m) => stripBody(m, account)),
+          total: entries.length,
+          source: 'cache',
+        };
         break;
       }
 
