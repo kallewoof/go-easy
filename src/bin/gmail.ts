@@ -36,9 +36,8 @@ function usage(): never {
     message: 'go-gmail <account> <command> [args...]',
     commands: {
       search: 'go-gmail <account> search "<query>" [--max=N] [--page-token=<token>]  — fetch from Gmail, cache results, omit body',
-      read: 'go-gmail <account> read <messageId>  — return full cached message including body',
       query: 'go-gmail <account> query "<text>"  — search local cache (no API call)',
-      get: 'go-gmail <account> get <messageId> [--format=eml|text|html|sane-html] [--output=<path>] [--b64encode]',
+      get: 'go-gmail <account> get <messageId> [<page>] [--format=eml|text|html|sane-html] [--output=<path>] [--b64encode] [--no-cache]',
       thread: 'go-gmail <account> thread <threadId> [--format=mbox] [--output=<path>] [--b64encode]',
       labels: 'go-gmail <account> labels',
       send: 'go-gmail <account> send --to=<addr> --subject="..." --body-text-file=body.txt [--cc=<addr>] [--bcc=<addr>] [--confirm]',
@@ -71,7 +70,7 @@ function stripBody<T extends { body: unknown; id: string }>(
   account: string
 ): Omit<T, 'body'> & { read_body_cmd: string } {
   const { body: _, ...rest } = msg;
-  return { ...rest, read_body_cmd: `npx go-gmail ${account} read ${msg.id}` };
+  return { ...rest, read_body_cmd: `npx go-gmail ${account} get ${msg.id}` };
 }
 
 /**
@@ -106,6 +105,55 @@ export function handleRawOutput(
   //   go-gmail <account> get <id> --format=eml > message.eml
   process.stdout.write(buf);
   return undefined; // caller must not call JSON.stringify
+}
+
+const PAGE_BYTES = 45_000;
+
+/**
+ * Split JSON output into pageable chunks.
+ *
+ * JSON-escaped newlines (\\n) are expanded to real newlines first so that the
+ * logical line breaks inside email body strings become actual line boundaries.
+ * Lines are then grouped into pages whose UTF-8 byte size stays under PAGE_BYTES.
+ * Individual lines that exceed PAGE_BYTES on their own get their own page as-is.
+ */
+function pageText(json: string, page: number): { content: string; totalPages: number } {
+  const expanded = json.replace(/\\n/g, '\n');
+  if (Buffer.byteLength(expanded, 'utf8') <= PAGE_BYTES) {
+    return { content: expanded, totalPages: 1 };
+  }
+
+  const lines = expanded.split('\n');
+  const pages: string[] = [];
+  let chunk: string[] = [];
+  let chunkBytes = 0;
+
+  for (const line of lines) {
+    const lb = Buffer.byteLength(line + '\n', 'utf8');
+    if (chunkBytes + lb > PAGE_BYTES && chunk.length > 0) {
+      pages.push(chunk.join('\n'));
+      chunk = [line];
+      chunkBytes = lb;
+    } else {
+      chunk.push(line);
+      chunkBytes += lb;
+    }
+  }
+  if (chunk.length > 0) pages.push(chunk.join('\n'));
+
+  return { content: pages[page - 1] ?? '', totalPages: pages.length };
+}
+
+function emitPaged(text: string, page: number, account: string, msgId: string): void {
+  const { content, totalPages } = pageText(text, page);
+  if (totalPages === 1) {
+    console.log(content);
+  } else {
+    const next = page < totalPages
+      ? `\n[To read next page: npx go-gmail ${account} get ${msgId} ${page + 1}]`
+      : '\n[End of message]';
+    console.log(`[Page ${page}/${totalPages}]\n${content}${next}`);
+  }
 }
 
 export async function main(args: string[] = process.argv.slice(2)) {
@@ -162,27 +210,41 @@ export async function main(args: string[] = process.argv.slice(2)) {
       case 'get': {
         if (!pos[0]) usage();
         const fmt = flags.format;
+        const noCache = 'no-cache' in flags;
+        const page = pos[1] ? Math.max(1, parseInt(pos[1], 10)) : 1;
+
         if (fmt === 'eml') {
+          // Raw bytes are not cached — always fetch from API
           const buf = await gmail.getMessageRaw(auth, pos[0]);
           result = handleRawOutput(buf, 'eml', flags);
-          if (result === undefined) return; // already written to stdout
-        } else if (fmt === 'text' || fmt === 'html' || fmt === 'sane-html') {
-          const msg = await gmail.getMessage(auth, pos[0]);
-          let content: string;
-          if (fmt === 'text') {
-            content = msg.body.text ?? '';
-          } else if (fmt === 'html') {
-            content = msg.body.html ?? '';
-          } else {
-            // sane-html: sanitize before output
-            content = gmail.sanitizeEmailHtml(msg.body.html ?? '');
-          }
-          result = handleRawOutput(Buffer.from(content, 'utf-8'), fmt, flags);
-          if (result === undefined) return; // already written to stdout
+          if (result === undefined) return;
         } else {
-          const msg = await gmail.getMessage(auth, pos[0]);
-          cacheMessages(account, [msg]);
-          result = stripBody(msg, account);
+          // All other formats: try cache first, fall back to API + cache
+          const cached = !noCache ? getCachedMessage(account, pos[0]) : undefined;
+          const msg = cached ?? await gmail.getMessage(auth, pos[0]);
+          if (!cached) cacheMessages(account, [msg]);
+
+          if (fmt === 'text' || fmt === 'html' || fmt === 'sane-html') {
+            let content: string;
+            if (fmt === 'text') {
+              content = msg.body.text ?? '';
+            } else if (fmt === 'html') {
+              content = msg.body.html ?? '';
+            } else {
+              content = gmail.sanitizeEmailHtml(msg.body.html ?? '');
+            }
+            // file/base64 output: no truncation concern, skip pagination
+            if (flags['output'] || 'b64encode' in flags) {
+              result = handleRawOutput(Buffer.from(content, 'utf-8'), fmt, flags);
+              if (result === undefined) return;
+            } else {
+              emitPaged(content, page, account, pos[0]);
+              return;
+            }
+          } else {
+            emitPaged(JSON.stringify(msg, null, 2), page, account, pos[0]);
+            return;
+          }
         }
         break;
       }
@@ -197,10 +259,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
         } else {
           const thread = await gmail.getThread(auth, pos[0]);
           cacheMessages(account, thread.messages);
-          result = {
-            ...thread,
-            messages: thread.messages.map((m) => stripBody(m, account)),
-          };
+          result = thread;
         }
         break;
 
@@ -298,21 +357,6 @@ export async function main(args: string[] = process.argv.slice(2)) {
         const buf = await gmail.getAttachmentContent(auth, pos[0], pos[1]);
         // Output base64 for binary safety
         result = { data: buf.toString('base64'), size: buf.length };
-        break;
-      }
-
-      case 'read': {
-        if (!pos[0]) usage();
-        const cached = getCachedMessage(account, pos[0]);
-        if (!cached) {
-          console.error(JSON.stringify({
-            error: 'NOT_CACHED',
-            message: `Message ${pos[0]} not found in local cache.`,
-            hint: `Run: npx go-gmail ${account} search "<query>" to populate the cache`,
-          }, null, 2));
-          process.exit(1);
-        }
-        result = cached;
         break;
       }
 

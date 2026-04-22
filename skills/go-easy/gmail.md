@@ -47,53 +47,70 @@ npx go-gmail <account> profile
 ```
 
 #### search
-Search emails using Gmail query syntax.
+Search emails using Gmail query syntax. Results omit `body` to keep output small —
+each item includes a `read_body_cmd` hint with the exact `get` command to fetch the full message.
+Results are cached locally for instant `get` access without an extra API call.
 ```bash
 npx go-gmail <account> search "from:client is:unread"
 npx go-gmail <account> search "subject:invoice after:2026/01/01" --max=5
 npx go-gmail <account> search "label:important" --max=10 --page-token=<token>
 ```
-Returns: `{ items: GmailMessage[], nextPageToken?, resultSizeEstimate? }`
+Returns: `{ items: GmailMessageSummary[], nextPageToken?, resultSizeEstimate? }`
 
-Use `nextPageToken` from a previous response as `--page-token` to fetch the next page.
+Each item in `items` has all `GmailMessage` fields **except** `body`, plus:
+- `read_body_cmd` — e.g. `"npx go-gmail account@x.com get <id>"` — run this to get the full message
 
 - `--max=N` — max results per page (default: 20)
 - `--page-token=<token>` — pagination token from previous response
 - Spam and trash are excluded by default.
 
 #### get
-Get a single message by ID.
+Get a single message by ID. Checks the local cache first (populated by `search`); only
+calls the Gmail API on a cache miss or when `--no-cache` is passed. Output is paginated:
+large messages are split into ~45 KB pages.
 ```bash
-# Default: structured JSON
+# Default: full message JSON (page 1)
 npx go-gmail <account> get <messageId>
 
-# Plain text body only (stdout)
+# Page 2 of a large message
+npx go-gmail <account> get <messageId> 2
+
+# Skip cache, force fresh fetch from Gmail API
+npx go-gmail <account> get <messageId> --no-cache
+
+# Plain text body (paginated)
 npx go-gmail <account> get <messageId> --format=text
 
-# Raw HTML body only (stdout)
+# Raw HTML body (paginated)
 npx go-gmail <account> get <messageId> --format=html
 
-# Sanitized HTML — scripts/events/javascript: URIs stripped, safe to render
+# Sanitized HTML — scripts/events/javascript: URIs stripped, safe to render (paginated)
 npx go-gmail <account> get <messageId> --format=sane-html
 
-# Raw RFC 2822 message (pipe-friendly)
+# Raw RFC 2822 message — always fetched from API, not cached
 npx go-gmail <account> get <messageId> --format=eml > message.eml
 
-# Any format: write to file → JSON { ok, format, path, bytes }
+# Write to file instead of stdout — skips pagination (no truncation concern)
 npx go-gmail <account> get <messageId> --format=sane-html --output=body.html
+# → { "ok": true, "format": "sane-html", "path": "body.html", "bytes": 1234 }
 
-# Any format: base64 in JSON (agent-safe, no shell redirection)
+# Base64 in JSON — skips pagination (agent-safe, no shell redirection)
 npx go-gmail <account> get <messageId> --format=text --b64encode
 # → { "format": "text", "data": "<base64>", "bytes": 1234 }
 ```
 
-| `--format` | Output | Source |
-|------------|--------|--------|
-| *(default)* | `GmailMessage` JSON | `getMessage()` |
-| `text` | Plain text body | `body.text` |
-| `html` | Raw HTML body | `body.html` |
-| `sane-html` | Sanitized HTML — XSS-safe | `sanitizeEmailHtml(body.html)` |
-| `eml` | Full RFC 2822 message bytes | `getMessageRaw()` |
+| `--format` | Output | Cached? | Paginated? |
+|------------|--------|---------|------------|
+| *(default)* | Full `GmailMessage` JSON | Yes | Yes |
+| `text` | Plain text body | Yes | Yes (raw stdout only) |
+| `html` | Raw HTML body | Yes | Yes (raw stdout only) |
+| `sane-html` | Sanitized HTML — XSS-safe | Yes | Yes (raw stdout only) |
+| `eml` | Full RFC 2822 message bytes | No | No |
+
+**Pagination:** when output exceeds ~45 KB, the response is split into pages. Page 1 shows
+`[Page 1/N]` and a `[To read next page: npx go-gmail <account> get <id> 2]` footer.
+Pass the page number as the second positional argument. If the message fits in one page,
+there is no pagination overhead.
 
 **`sane-html` strips:** `<script>`, `<iframe>`, `<object>`, `<form>`, event handlers
 (`onclick`, `onerror`, …), `javascript:` hrefs, `data:` image URIs. Keeps layout,
@@ -479,6 +496,11 @@ interface GmailMessage {
   labelIds: string[];     // label IDs (not names)
   attachments: AttachmentInfo[];
   rfc822MessageId?: string;  // RFC 2822 Message-ID header
+}
+
+// Returned by search — body omitted to keep output small
+interface GmailMessageSummary extends Omit<GmailMessage, 'body'> {
+  read_body_cmd: string;  // e.g. "npx go-gmail account@x.com get <id>"
 }
 
 interface GmailThread {

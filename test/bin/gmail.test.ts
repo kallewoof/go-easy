@@ -127,21 +127,21 @@ describe('main()', () => {
     expect(out).toHaveProperty('data');
   });
 
-  it('get --format=text — streams text body to stdout', async () => {
+  it('get --format=text — outputs text body via console.log (paginated)', async () => {
     await main([ACC, 'get', 'msg1', '--format=text']);
     expect(vi.mocked(gmailModule.getMessage)).toHaveBeenCalled();
-    expect(stdoutSpy).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalled();
   });
 
-  it('get --format=html — streams html body to stdout', async () => {
+  it('get --format=html — outputs html body via console.log (paginated)', async () => {
     await main([ACC, 'get', 'msg1', '--format=html']);
-    expect(stdoutSpy).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalled();
   });
 
-  it('get --format=sane-html — sanitizes before streaming', async () => {
+  it('get --format=sane-html — sanitizes then outputs via console.log (paginated)', async () => {
     await main([ACC, 'get', 'msg1', '--format=sane-html']);
     expect(vi.mocked(gmailModule.sanitizeEmailHtml)).toHaveBeenCalled();
-    expect(stdoutSpy).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalled();
   });
 
   it('thread — fetches thread and outputs JSON', async () => {
