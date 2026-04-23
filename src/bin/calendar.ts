@@ -93,7 +93,7 @@ export const VALID_FLAGS: Record<string, string[]> = {
 /** Throw if any flag is not in the allowed set for this command */
 export function assertKnownFlags(command: string, flags: Record<string, string>): void {
   const valid = VALID_FLAGS[command] ?? [];
-  const allowed = new Set([...valid, 'confirm']);
+  const allowed = new Set([...valid, 'confirm', 'pass']);
   const unknown = Object.keys(flags).filter((k) => !allowed.has(k));
   if (unknown.length > 0) {
     throw Object.assign(

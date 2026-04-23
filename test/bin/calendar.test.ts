@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseFlags, positional, buildSpecialEventFlags, assertKnownFlags, VALID_FLAGS, parseReminderFlag, main } from '../../src/bin/calendar.js';
 import * as calendarModule from '../../src/calendar/index.js';
 import { setSafetyContext } from '../../src/safety.js';
+import { getAuth } from '../../src/auth.js';
 
 vi.mock('../../src/auth.js', () => ({
   getAuth: vi.fn().mockResolvedValue('fake-auth'),
@@ -397,4 +398,22 @@ describe('main()', () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errSpy).toHaveBeenCalled();
   });
+
+  // ─── --pass forwarded to getAuth for every command ─────────
+  const passCases: [string, string[]][] = [
+    ['calendars', []],
+    ['events',    ['primary']],
+    ['event',     ['primary', 'evt1']],
+    ['create',    ['primary', '--summary=X', '--start=2026-01-01', '--end=2026-01-02']],
+    ['update',    ['primary', 'evt1', '--summary=X', '--start=2026-01-01', '--end=2026-01-02']],
+    ['delete',    ['primary', 'evt1', '--confirm']],
+    ['freebusy',  ['primary', '--from=2026-01-01', '--to=2026-01-31']],
+  ];
+
+  for (const [cmd, baseArgs] of passCases) {
+    it(`${cmd} — forwards --pass to getAuth`, async () => {
+      await main([ACC, cmd, ...baseArgs, '--pass=secret']);
+      expect(vi.mocked(getAuth)).toHaveBeenCalledWith('calendar', ACC, 'secret');
+    });
+  }
 });
