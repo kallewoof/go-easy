@@ -48,5 +48,6 @@ import * as gmail from './gmail/index.js';
 import * as drive from './drive/index.js';
 import * as calendar from './calendar/index.js';
 import * as tasks from './tasks/index.js';
+import * as sheets from './sheets/index.js';
 
-export { gmail, drive, calendar, tasks };
+export { gmail, drive, calendar, tasks, sheets };

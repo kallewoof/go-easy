@@ -11,10 +11,11 @@ describe('SCOPES', () => {
 
 describe('ALL_SCOPES', () => {
   it('contains all scope URLs', () => {
-    expect(ALL_SCOPES).toHaveLength(4);
+    expect(ALL_SCOPES).toHaveLength(5);
     expect(ALL_SCOPES).toContain('https://mail.google.com/');
     expect(ALL_SCOPES).toContain('https://www.googleapis.com/auth/drive');
     expect(ALL_SCOPES).toContain('https://www.googleapis.com/auth/calendar');
+    expect(ALL_SCOPES).toContain('https://www.googleapis.com/auth/spreadsheets');
   });
 });
 

@@ -95,6 +95,8 @@ Returns: `{ ok: true, path, size, mimeType }`
 
 Not all combinations work — the table shows supported ones. Unsupported combos return `DRIVE_ERROR`.
 
+**Note:** `export <id> csv` only exports the **first sheet**. To read a specific sheet or tab, use [`go-sheets`](sheets.md) instead.
+
 #### upload (WRITE)
 Upload a file.
 ```bash
