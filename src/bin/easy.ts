@@ -70,7 +70,15 @@ export function parseFlags(argv: string[]): Record<string, string> {
 
 /** Positional args (non-flag) */
 export function positionals(argv: string[]): string[] {
-  return argv.filter((a) => !a.startsWith('--'));
+  const consumed = new Set<number>();
+  for (let i = 0; i < argv.length; i++) {
+    const m = argv[i].match(/^--([a-z-]+)(?:=(.*))?$/);
+    if (!m) continue;
+    if (m[2] === undefined && i + 1 < argv.length && !argv[i + 1].startsWith('--')) {
+      consumed.add(++i);
+    }
+  }
+  return argv.filter((a, i) => !a.startsWith('--') && !consumed.has(i));
 }
 
 export async function main(args: string[] = process.argv.slice(2)): Promise<void> {

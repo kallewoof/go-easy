@@ -59,9 +59,17 @@ function usage(): never {
   process.exit(1);
 }
 
-/** Get positional args (non-flag) */
+/** Get positional args (non-flag), skipping values consumed by --key value pairs */
 export function positional(args: string[]): string[] {
-  return args.filter((a) => !a.startsWith('--'));
+  const consumed = new Set<number>();
+  for (let i = 0; i < args.length; i++) {
+    const match = args[i].match(/^--([^=]+)(?:=(.*))?$/s);
+    if (!match) continue;
+    if (match[2] === undefined && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      consumed.add(++i);
+    }
+  }
+  return args.filter((a, i) => !a.startsWith('--') && !consumed.has(i));
 }
 
 /** Strip body from a message and add a hint for retrieving it. */

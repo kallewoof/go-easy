@@ -51,6 +51,11 @@ describe('positional', () => {
   it('returns all args when none are flags', () => {
     expect(positional(['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
   });
+
+  it('does not include values consumed by space-separated --key value flags', () => {
+    expect(positional(['msg-id', '--format', 'text'])).toEqual(['msg-id']);
+    expect(positional(['msg-id', '--format', 'text', '2'])).toEqual(['msg-id', '2']);
+  });
 });
 
 describe('handleRawOutput', () => {

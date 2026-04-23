@@ -62,9 +62,17 @@ export function parseFlags(args: string[]): Record<string, string> {
   return flags;
 }
 
-/** Get positional args (non-flag) */
+/** Get positional args (non-flag), skipping values consumed by --key value pairs */
 export function positional(args: string[]): string[] {
-  return args.filter((a) => !a.startsWith('--'));
+  const consumed = new Set<number>();
+  for (let i = 0; i < args.length; i++) {
+    const match = args[i].match(/^--([^=]+)(?:=(.*))?$/);
+    if (!match) continue;
+    if (match[2] === undefined && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      consumed.add(++i);
+    }
+  }
+  return args.filter((a, i) => !a.startsWith('--') && !consumed.has(i));
 }
 
 const EVENT_FLAGS = ['summary', 'description', 'start', 'end', 'tz', 'location', 'attendees',
