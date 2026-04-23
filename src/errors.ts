@@ -33,6 +33,8 @@ export class GoEasyError extends Error {
  *   AUTH_REFRESH_FAILED — Transient network error refreshing token
  *   AUTH_STORE_CORRUPT — accounts.json unreadable
  *   AUTH_NO_CREDENTIALS — credentials.json missing
+ *   AUTH_PROTECTED     — Account exists but requires a passphrase (--pass)
+ *   AUTH_PASS_WRONG    — Passphrase supplied but incorrect
  *   AUTH_ERROR         — Generic (legacy fallback)
  */
 export type AuthErrorCode =
@@ -42,6 +44,8 @@ export type AuthErrorCode =
   | 'AUTH_REFRESH_FAILED'
   | 'AUTH_STORE_CORRUPT'
   | 'AUTH_NO_CREDENTIALS'
+  | 'AUTH_PROTECTED'
+  | 'AUTH_PASS_WRONG'
   | 'AUTH_ERROR';
 
 /** OAuth2 token expired, missing, or invalid */

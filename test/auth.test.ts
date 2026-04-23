@@ -3,54 +3,21 @@ import { AuthError } from '../src/errors.js';
 
 // ─── Mocks ─────────────────────────────────────────────────
 
-// Mock auth-store before importing auth
-// We need real implementations of findAccount and resolveToken (pure functions),
-// but mock the I/O functions. vi.mock hoists, so we can't use await import.
-// Instead, we provide inline implementations matching the real ones.
+// Mock auth-store before importing auth.
+// Use importOriginal to keep pure functions (findAccount, resolveToken,
+// filterAccountsByPass, hashPass) as real implementations; only I/O is mocked.
 const mockReadAccountStore = vi.fn();
 const mockReadCredentials = vi.fn();
 
-vi.mock('../src/auth-store.js', () => {
-  // Inline pure functions (matching real implementations)
-  const SCOPES: Record<string, string> = {
-    gmail: 'https://mail.google.com/',
-    drive: 'https://www.googleapis.com/auth/drive',
-    calendar: 'https://www.googleapis.com/auth/calendar',
-  };
-
-  function findAccount(store: { accounts: Array<{ email: string }> }, email?: string) {
-    if (!email) return store.accounts[0];
-    const normalized = email.trim().toLowerCase();
-    return store.accounts.find((a: { email: string }) => a.email.toLowerCase() === normalized);
-  }
-
-  function resolveToken(
-    account: { tokens: Record<string, { refreshToken: string; scopes: string[] } | undefined> },
-    service: string
-  ) {
-    const neededScope = SCOPES[service];
-    const combined = account.tokens.combined;
-    if (combined) {
-      if (combined.scopes.includes(neededScope)) {
-        return { refreshToken: combined.refreshToken, scopes: combined.scopes };
-      }
-    }
-    const serviceToken = account.tokens[service];
-    if (serviceToken) {
-      return { refreshToken: serviceToken.refreshToken, scopes: serviceToken.scopes };
-    }
-    return null;
-  }
-
+vi.mock('../src/auth-store.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/auth-store.js')>();
   return {
+    ...actual,
     readAccountStore: (...args: unknown[]) => mockReadAccountStore(...args),
-    readCredentials: (...args: unknown[]) => mockReadCredentials(...args),
     readAllCredentials: async () => {
       const creds = await mockReadCredentials();
       return creds ? [creds] : [];
     },
-    findAccount,
-    resolveToken,
   };
 });
 
@@ -70,6 +37,7 @@ vi.mock('google-auth-library', () => ({
 // Import after mocks
 import { getAuth, listAccounts, listAllAccounts, clearAuthCache } from '../src/auth.js';
 import type { AccountStore } from '../src/auth-store.js';
+import { hashPass } from '../src/auth-store.js';
 
 // ─── Fixtures ──────────────────────────────────────────────
 
@@ -134,6 +102,20 @@ const fakeCombinedStore: AccountStore = {
       },
       addedAt: '2026-01-01T00:00:00Z',
     },
+  ],
+};
+
+const PASS = 'mysecret';
+
+// Store where alice is protected by a passphrase
+const fakePassStore: AccountStore = {
+  version: 1,
+  accounts: [
+    {
+      ...fakeStore.accounts[0],
+      passHash: hashPass(PASS),
+    },
+    fakeStore.accounts[1], // bob is unprotected
   ],
 };
 
@@ -282,6 +264,36 @@ describe('getAuth', () => {
     expect(err.message).toBe('No accounts configured');
     expect(err.fix).toBe('npx go-easy auth add <email>');
   });
+
+  it('throws AUTH_PROTECTED when account exists but no pass given', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const err = await getAuth('gmail', 'alice@example.com').catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.code).toBe('AUTH_PROTECTED');
+    expect(err.message).toContain('--pass');
+  });
+
+  it('throws AUTH_PASS_WRONG when account exists but wrong pass given', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const err = await getAuth('gmail', 'alice@example.com', 'wrongpass').catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.code).toBe('AUTH_PASS_WRONG');
+  });
+
+  it('succeeds for pass-protected account with correct pass', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const client = await getAuth('gmail', 'alice@example.com', PASS);
+    expect(client).toBeDefined();
+    expect(mockSetCredentials).toHaveBeenCalledWith({
+      refresh_token: 'refresh-alice-gmail',
+    });
+  });
+
+  it('does not require pass for unprotected accounts even when other accounts are protected', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const client = await getAuth('gmail', 'bob@example.com');
+    expect(client).toBeDefined();
+  });
 });
 
 describe('listAccounts', () => {
@@ -302,6 +314,20 @@ describe('listAccounts', () => {
     mockReadAccountStore.mockResolvedValue(null);
     const emails = await listAccounts('gmail');
     expect(emails).toEqual([]);
+  });
+
+  it('excludes pass-protected accounts when no pass given', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const emails = await listAccounts('gmail');
+    expect(emails).not.toContain('alice@example.com');
+    expect(emails).toContain('bob@example.com');
+  });
+
+  it('includes pass-protected accounts with correct pass', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const emails = await listAccounts('gmail', PASS);
+    expect(emails).toContain('alice@example.com');
+    expect(emails).toContain('bob@example.com');
   });
 });
 
@@ -330,6 +356,25 @@ describe('listAllAccounts', () => {
     expect(results).toHaveLength(1);
     expect(results[0].source).toBe('combined');
     expect(results[0].scopes).toContain('https://mail.google.com/');
+  });
+
+  it('includes passProtected:false for unprotected accounts', async () => {
+    const results = await listAllAccounts();
+    expect(results.every((a) => a.passProtected === false)).toBe(true);
+  });
+
+  it('hides pass-protected accounts when no passes given', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const results = await listAllAccounts();
+    expect(results.map((a) => a.email)).not.toContain('alice@example.com');
+  });
+
+  it('shows pass-protected accounts with correct pass and marks passProtected:true', async () => {
+    mockReadAccountStore.mockResolvedValue(fakePassStore);
+    const results = await listAllAccounts([PASS]);
+    const alice = results.find((a) => a.email === 'alice@example.com');
+    expect(alice).toBeDefined();
+    expect(alice!.passProtected).toBe(true);
   });
 });
 

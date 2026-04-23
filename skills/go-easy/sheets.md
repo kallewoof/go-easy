@@ -3,8 +3,10 @@
 ## Gateway CLI: `npx go-sheets`
 
 ```
-npx go-sheets <account> <command> [args...] [--flags]
+npx go-sheets <account> <command> [args...] [--pass <phrase>] [--flags]
 ```
+
+`--pass <phrase>` is required when the account is passphrase-protected (see [SKILL.md](SKILL.md)).
 
 All commands output JSON to stdout. Errors output JSON to stderr with exit code 1.
 
@@ -136,6 +138,8 @@ interface SheetWriteResult {
 | Code | Meaning | Exit Code |
 |------|---------|-----------|
 | `AUTH_NO_ACCOUNT` | Account not configured | 1 |
+| `AUTH_PROTECTED` | Account exists but `--pass` was not supplied | 1 |
+| `AUTH_PASS_WRONG` | `--pass` supplied but incorrect | 1 |
 | `AUTH_MISSING_SCOPE` | Account exists but missing Sheets scope | 1 |
 | `AUTH_TOKEN_REVOKED` | Refresh token revoked — re-auth needed | 1 |
 | `AUTH_NO_CREDENTIALS` | OAuth credentials missing | 1 |

@@ -25,6 +25,8 @@ import {
   resolveToken,
   upsertAccount,
   removeAccount,
+  hashPass,
+  filterAccountsByPass,
 } from '../src/auth-store.js';
 import type { AccountStore, GoEasyAccount } from '../src/auth-store.js';
 
@@ -272,6 +274,66 @@ describe('removeAccount', () => {
     const store = makeStore([aliceAccount]);
     expect(removeAccount(store, 'nobody@example.com')).toBe(false);
     expect(store.accounts).toHaveLength(1);
+  });
+});
+
+// ─── hashPass ─────────────────────────────────────────────
+
+describe('hashPass', () => {
+  it('is deterministic', () => {
+    expect(hashPass('mysecret')).toBe(hashPass('mysecret'));
+  });
+
+  it('returns a 64-char lowercase hex string (SHA-256)', () => {
+    expect(hashPass('anything')).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('differs for different inputs', () => {
+    expect(hashPass('a')).not.toBe(hashPass('b'));
+  });
+});
+
+// ─── filterAccountsByPass ──────────────────────────────────
+
+describe('filterAccountsByPass', () => {
+  const pass = 'mysecret';
+
+  const unprotected: GoEasyAccount = { ...aliceAccount };
+  const protected_: GoEasyAccount = {
+    ...aliceAccount,
+    email: 'bob@example.com',
+    passHash: hashPass(pass),
+  };
+
+  it('shows unprotected accounts when no passes given', () => {
+    const store = makeStore([unprotected]);
+    expect(filterAccountsByPass(store, []).accounts).toHaveLength(1);
+  });
+
+  it('hides protected accounts when no passes given', () => {
+    const store = makeStore([protected_]);
+    expect(filterAccountsByPass(store, []).accounts).toHaveLength(0);
+  });
+
+  it('shows protected account with the correct pass', () => {
+    const store = makeStore([protected_]);
+    expect(filterAccountsByPass(store, [pass]).accounts).toHaveLength(1);
+  });
+
+  it('hides protected account with the wrong pass', () => {
+    const store = makeStore([protected_]);
+    expect(filterAccountsByPass(store, ['wrongpass']).accounts).toHaveLength(0);
+  });
+
+  it('shows unprotected + matching protected together', () => {
+    const store = makeStore([unprotected, protected_]);
+    expect(filterAccountsByPass(store, [pass]).accounts).toHaveLength(2);
+  });
+
+  it('does not mutate the original store', () => {
+    const store = makeStore([unprotected, protected_]);
+    filterAccountsByPass(store, []);
+    expect(store.accounts).toHaveLength(2);
   });
 });
 

@@ -87,7 +87,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
   let auth;
   try {
-    auth = await getAuth('tasks', account);
+    auth = await getAuth('tasks', account, flags.pass);
   } catch (err: unknown) {
     const e = err as { toJSON?: () => unknown; message?: string; code?: string };
     if (typeof e.toJSON === 'function') {

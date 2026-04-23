@@ -78,7 +78,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
   });
 
   try {
-    const auth = await getAuth('sheets', account);
+    const auth = await getAuth('sheets', account, flags.pass);
     let result: unknown;
 
     switch (command) {

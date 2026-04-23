@@ -17,6 +17,7 @@ import {
   readAllCredentials,
   findAccount,
   resolveToken,
+  filterAccountsByPass,
 } from './auth-store.js';
 import type { GoogleService, AccountStore } from './auth-store.js';
 export type { GoogleService } from './auth-store.js';
@@ -40,12 +41,13 @@ const clientCache = new Map<string, OAuth2Client>();
  */
 export async function getAuth(
   service: GoogleService,
-  account?: string
+  account?: string,
+  pass?: string
 ): Promise<OAuth2Client> {
   // Try to load the store
-  let store = await readAccountStore();
+  const rawStore = await readAccountStore();
 
-  if (!store) {
+  if (!rawStore) {
     throw new AuthError('AUTH_NO_ACCOUNT', {
       message: account
         ? `Account "${account}" not configured`
@@ -56,9 +58,24 @@ export async function getAuth(
     });
   }
 
+  // Filter to accounts visible with the supplied pass (or no pass for unprotected)
+  const store = filterAccountsByPass(rawStore, pass ? [pass] : []);
+
   // Find the account
   const entry = findAccount(store, account);
   if (!entry) {
+    // Account exists but was hidden by the pass filter — give a targeted error
+    if (account && findAccount(rawStore, account)) {
+      if (pass) {
+        throw new AuthError('AUTH_PASS_WRONG', {
+          message: `Passphrase for "${account}" is incorrect.`,
+        });
+      }
+      throw new AuthError('AUTH_PROTECTED', {
+        message: `Account "${account}" is passphrase-protected. Add --pass <phrase> to your command.`,
+        fix: `go-easy auth list --pass <phrase>`,
+      });
+    }
     const available = store.accounts.map((a) => a.email).join(', ');
     throw new AuthError('AUTH_NO_ACCOUNT', {
       message: account
@@ -108,9 +125,10 @@ export async function getAuth(
  * List available accounts (emails) for a service.
  * Only returns accounts that have a token for the given service.
  */
-export async function listAccounts(service: GoogleService): Promise<string[]> {
-  const store = await readAccountStore();
-  if (!store) return [];
+export async function listAccounts(service: GoogleService, pass?: string): Promise<string[]> {
+  const rawStore = await readAccountStore();
+  if (!rawStore) return [];
+  const store = filterAccountsByPass(rawStore, pass ? [pass] : []);
   return store.accounts
     .filter((a) => resolveToken(a, service) !== null)
     .map((a) => a.email);
@@ -119,17 +137,19 @@ export async function listAccounts(service: GoogleService): Promise<string[]> {
 /**
  * List all accounts regardless of service.
  */
-export async function listAllAccounts(): Promise<
-  Array<{ email: string; scopes: string[]; source: string }>
+export async function listAllAccounts(passes: string[] = []): Promise<
+  Array<{ email: string; scopes: string[]; source: string; passProtected: boolean }>
 > {
-  const store = await readAccountStore();
-  if (!store) return [];
+  const rawStore = await readAccountStore();
+  if (!rawStore) return [];
+  const store = filterAccountsByPass(rawStore, passes);
   return store.accounts.map((a) => {
     if (a.tokens.combined) {
       return {
         email: a.email,
         scopes: a.tokens.combined.scopes,
         source: 'combined',
+        passProtected: !!a.passHash,
       };
     }
     // Collect scopes from per-service tokens
@@ -142,6 +162,7 @@ export async function listAllAccounts(): Promise<
       email: a.email,
       scopes,
       source: 'legacy',
+      passProtected: !!a.passHash,
     };
   });
 }

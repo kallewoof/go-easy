@@ -181,7 +181,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
   });
 
   try {
-    const auth = await getAuth('calendar', account);
+    const auth = await getAuth('calendar', account, flags.pass);
     assertKnownFlags(command, flags);
     let result: unknown;
 

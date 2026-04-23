@@ -11,6 +11,7 @@
 
 import { readFile, writeFile, rename, mkdir, chmod } from 'node:fs/promises';
 import { existsSync, renameSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { SCOPES } from './scopes.js';
@@ -28,6 +29,7 @@ export interface OAuthToken {
 export interface GoEasyAccount {
   email: string;
   clientId?: string;
+  passHash?: string;
   tokens: {
     combined?: OAuthToken;
     gmail?: OAuthToken;
@@ -275,6 +277,31 @@ export function resolveToken(
   }
 
   return null;
+}
+
+/**
+ * Hash a passphrase for storage (SHA-256 hex).
+ * Passphrases are capability tokens, not passwords — no salt needed.
+ */
+export function hashPass(pass: string): string {
+  return createHash('sha256').update(pass).digest('hex');
+}
+
+/**
+ * Return a store containing only accounts visible to the given passphrases.
+ *
+ * - Accounts with no passHash are always visible.
+ * - Accounts with a passHash are visible only when a matching pass is supplied.
+ * - If no passes are given, only unprotected accounts are returned.
+ */
+export function filterAccountsByPass(store: AccountStore, passes: string[]): AccountStore {
+  const hashed = passes.map(hashPass);
+  return {
+    ...store,
+    accounts: store.accounts.filter(
+      (a) => !a.passHash || hashed.includes(a.passHash)
+    ),
+  };
 }
 
 /**

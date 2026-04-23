@@ -45,7 +45,13 @@ go-easy manages its own OAuth tokens in `~/.config/go-easy/`. One combined token
 
 ```bash
 npx go-easy auth list
-# → { "accounts": [{ "email": "marc@blegal.eu", "scopes": [...], "source": "combined" }] }
+# → { "accounts": [{ "email": "marc@blegal.eu", "scopes": [...], "source": "combined", "passProtected": false }] }
+```
+
+Passphrase-protected accounts are **invisible** in `auth list` unless you supply the correct `--pass`. Unprotected accounts always appear.
+
+```bash
+npx go-easy auth list --pass mysecretphrase
 ```
 
 ### Add or upgrade an account
@@ -94,6 +100,45 @@ npx go-easy auth remove marc@blegal.eu --confirm
 ```
 
 Without `--confirm`: shows what would happen, exits with code 2.
+
+### Passphrase-protected accounts
+
+Accounts can be protected with a passphrase. A protected account is completely invisible — it doesn't appear in `auth list` and returns `AUTH_NO_ACCOUNT` from service CLIs — unless the caller supplies the correct `--pass`.
+
+This is a project-scoping mechanism: store the passphrase in the project's `CLAUDE.md` so only agents working in that project can use the account.
+
+**Protect an account:**
+```bash
+npx go-easy auth pass-set marc@blegal.eu mysecretphrase
+# → { "ok": true, "email": "marc@blegal.eu", "passProtected": true }
+```
+
+**Change a passphrase** (requires the current one):
+```bash
+npx go-easy auth pass-set marc@blegal.eu newphrase --current-pass mysecretphrase
+```
+
+**Remove passphrase protection** (requires the current one):
+```bash
+npx go-easy auth pass-remove marc@blegal.eu --current-pass mysecretphrase
+# → { "ok": true, "email": "marc@blegal.eu", "passProtected": false }
+```
+
+**Use a protected account** — pass `--pass` to any service CLI:
+```bash
+npx go-gmail marc@blegal.eu search "is:unread" --pass mysecretphrase
+npx go-drive marc@blegal.eu ls --pass mysecretphrase
+npx go-calendar marc@blegal.eu events primary --pass mysecretphrase
+npx go-tasks marc@blegal.eu lists --pass mysecretphrase
+npx go-sheets marc@blegal.eu tabs <id> --pass mysecretphrase
+```
+
+**Auth errors from pass issues:**
+
+| Error | Meaning |
+|-------|---------|
+| `AUTH_PROTECTED` | Account exists but `--pass` was not supplied |
+| `AUTH_PASS_WRONG` | `--pass` was supplied but incorrect |
 
 ### Error recovery
 

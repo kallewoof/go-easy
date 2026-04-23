@@ -184,7 +184,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
   });
 
   try {
-    const auth = await getAuth('gmail', account);
+    const auth = await getAuth('gmail', account, flags.pass);
     let result: unknown;
 
     switch (command) {
