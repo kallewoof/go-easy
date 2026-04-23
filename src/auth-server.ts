@@ -22,6 +22,7 @@ import { homedir, platform } from 'node:os';
 import { URL, fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { readCredentials } from './auth-store.js';
+import { ALL_SCOPES } from './scopes.js';
 
 // ─── Constants ─────────────────────────────────────────────
 
@@ -39,14 +40,6 @@ function resolveConfigDir(): string {
 const GO_EASY_DIR = resolveConfigDir();
 const PENDING_DIR = join(GO_EASY_DIR, 'pending');
 const ACCOUNTS_FILE = join(GO_EASY_DIR, 'accounts.json');
-
-// All scopes requested by default (D2)
-const ALL_SCOPES = [
-  'https://mail.google.com/',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/calendar',
-  'https://www.googleapis.com/auth/tasks',
-];
 
 // ─── Args ──────────────────────────────────────────────────
 
