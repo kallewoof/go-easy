@@ -91,9 +91,8 @@ export async function main(args: string[] = process.argv.slice(2)) {
     },
   });
 
-  const auth = await getAuth('drive', account);
-
   try {
+    const auth = await getAuth('drive', account);
     let result: unknown;
 
     switch (command) {

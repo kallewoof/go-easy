@@ -180,9 +180,8 @@ export async function main(args: string[] = process.argv.slice(2)) {
     },
   });
 
-  const auth = await getAuth('calendar', account);
-
   try {
+    const auth = await getAuth('calendar', account);
     assertKnownFlags(command, flags);
     let result: unknown;
 
