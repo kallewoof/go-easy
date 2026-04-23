@@ -38,7 +38,7 @@ export function usage(): never {
       message: 'go-easy <command> [args...]',
       commands: {
         'auth list [--pass <phrase>]': 'List accounts visible with the given passphrase (unprotected accounts always shown)',
-        'auth add <email>': 'Add or upgrade an account (starts auth flow)',
+        'auth add <email> [--credentials <name|index>]': 'Add or upgrade an account (starts auth flow)',
         'auth remove <email> --confirm': 'Remove an account',
         'auth pass-set <email> <new-passphrase> [--current-pass <phrase>]': 'Protect an account with a passphrase (--current-pass required if one is already set)',
         'auth pass-remove <email> [--current-pass <phrase>]': 'Remove passphrase protection (--current-pass required if one is set)',

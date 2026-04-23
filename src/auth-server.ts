@@ -363,6 +363,7 @@ async function start(): Promise<void> {
     port,
     pid: process.pid,
     authUrl,
+    clientId: creds.clientId,
     credentialsSelector: credentialsSelector ?? null,
     startedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + TIMEOUT_MS).toISOString(),

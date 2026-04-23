@@ -148,7 +148,7 @@ function parseCredentialsObject(obj: unknown): OAuthCredentials | null {
  *
  * Pass a selector to pick a specific entry: a name string or a numeric index string.
  */
-export async function readCredentials(selector?: string): Promise<OAuthCredentials | null> {
+export async function readCredentials(selector?: string): Promise<OAuthCredentialsEntry | null> {
   const entries = await readAllCredentials();
   if (!selector) return entries[0] ?? null;
   const idx = Number(selector);

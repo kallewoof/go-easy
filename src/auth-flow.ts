@@ -28,8 +28,8 @@ import { AuthError } from './errors.js';
 // ─── Types ─────────────────────────────────────────────────
 
 export type AuthFlowStatus =
-  | { status: 'started'; authUrl: string; expiresIn: number }
-  | { status: 'waiting'; authUrl: string; expiresIn: number }
+  | { status: 'started'; authUrl: string; expiresIn: number; clientId?: string }
+  | { status: 'waiting'; authUrl: string; expiresIn: number; clientId?: string }
   | { status: 'complete'; email: string; scopes: string[] }
   | { status: 'partial'; email: string; grantedScopes: string[]; missingScopes: string[]; message: string }
   | { status: 'denied'; message: string }
@@ -41,6 +41,7 @@ interface PendingSession {
   port?: number;
   pid?: number;
   authUrl?: string;
+  clientId?: string;
   credentialsSelector?: string | null;
   startedAt?: string;
   expiresAt?: string;
@@ -174,6 +175,7 @@ export async function authAdd(email: string, credentialsSelector?: string): Prom
           status: 'waiting',
           authUrl: pending.authUrl ?? '',
           expiresIn,
+          ...(pending.clientId ? { clientId: pending.clientId } : {}),
         };
       }
       // PID is dead — stale session, clean up and restart
@@ -273,6 +275,7 @@ async function startAuthServer(email: string, credentialsSelector?: string): Pro
         expiresIn: pending.expiresAt
           ? Math.max(0, Math.floor((new Date(pending.expiresAt).getTime() - Date.now()) / 1000))
           : 300,
+        ...(pending.clientId ? { clientId: pending.clientId } : {}),
       };
     }
     // If the server wrote an error/terminal state, return it

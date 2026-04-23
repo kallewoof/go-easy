@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs';
 
-/** Parse --key=value flags from args */
+/** Parse --key=value and --key value flags from args */
 export function parseFlags(args: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
-  for (const arg of args) {
-    const match = arg.match(/^--([^=]+)(?:=(.*))?$/s);
-    if (match) {
-      flags[match[1]] = match[2] ?? 'true';
+  for (let i = 0; i < args.length; i++) {
+    const match = args[i].match(/^--([^=]+)(?:=(.*))?$/s);
+    if (!match) continue;
+    if (match[2] !== undefined) {
+      flags[match[1]] = match[2];
+    } else if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      flags[match[1]] = args[++i];
+    } else {
+      flags[match[1]] = 'true';
     }
   }
   return flags;
