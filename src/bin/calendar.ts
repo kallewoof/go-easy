@@ -230,15 +230,21 @@ export async function main(args: string[] = process.argv.slice(2)) {
         if (calIds.length === 1 && !wildcard) {
           result = await calendar.listEvents(auth, calIds[0], eventsOpts);
         } else {
-          // For wildcard/own expansion, skip calendars that reject event listing.
           const settled = (wildcard || ownOnly)
             ? await Promise.allSettled(calIds.map((id) => calendar.listEvents(auth, id, eventsOpts)))
             : await Promise.all(calIds.map((id) => calendar.listEvents(auth, id, eventsOpts))).then((r) => r.map((v) => ({ status: 'fulfilled' as const, value: v })));
+          const calendarErrors: Array<{ calendarId: string; error: string }> = [];
           const items = settled
-            .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof calendar.listEvents>>> => r.status === 'fulfilled')
-            .flatMap((r) => r.value.items)
+            .flatMap((r, i) => {
+              if (r.status === 'fulfilled') return r.value.items;
+              calendarErrors.push({ calendarId: calIds[i], error: r.reason?.message ?? String(r.reason) });
+              return [];
+            })
             .sort((a, b) => a.start.localeCompare(b.start));
-          result = { items: eventsOpts.maxResults ? items.slice(0, eventsOpts.maxResults) : items };
+          result = {
+            items: eventsOpts.maxResults ? items.slice(0, eventsOpts.maxResults) : items,
+            ...(calendarErrors.length ? { calendarErrors } : {}),
+          };
         }
         break;
       }
