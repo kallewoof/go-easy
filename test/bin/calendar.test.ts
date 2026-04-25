@@ -467,6 +467,19 @@ describe('deny-list enforcement', () => {
     expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
   });
 
+  it('events own — skips denied calendars even if user owns them', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar', accessRole: 'owner' },
+      { id: 'private@group.calendar.google.com', summary: 'Private', accessRole: 'owner' },
+      { id: 'shared@group.calendar.google.com', summary: 'Shared', accessRole: 'reader' },
+    ]);
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['private@group.calendar.google.com']);
+    await main([ACC, 'events', 'own', '--from=2026-01-01']);
+    // Only 'primary' remains: 'private' is denied, 'shared' is not owner
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
+  });
+
   it('events <denied-id> — exits with ACCESS_DENIED', async () => {
     vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
     await expect(main([ACC, 'events', 'denied@example.com'])).rejects.toThrow('exit');
