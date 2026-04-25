@@ -23,6 +23,12 @@ import {
   removeAccount,
   hashPass,
   getConfigDir,
+  addPassEntry,
+  removePassEntry,
+  findPassEntry,
+  addCalendarDeny,
+  removeCalendarDeny,
+  getCalendarDenyList,
 } from '../auth-store.js';
 import type { GoEasyAccount } from '../auth-store.js';
 import { authAdd as authAddFlow } from '../auth-flow.js';
@@ -40,8 +46,14 @@ export function usage(): never {
         'auth list [--pass <phrase>]': 'List accounts visible with the given passphrase (unprotected accounts always shown)',
         'auth add <email> [--credentials <name|index>]': 'Add or upgrade an account (starts auth flow)',
         'auth remove <email> --confirm': 'Remove an account',
-        'auth pass-set <email> <new-passphrase> [--current-pass <phrase>]': 'Protect an account with a passphrase (--current-pass required if one is already set)',
-        'auth pass-remove <email> [--current-pass <phrase>]': 'Remove passphrase protection (--current-pass required if one is set)',
+        'auth pass-set <email> <new-passphrase> [--current-pass <phrase>]': '(legacy) Protect an account with a single passphrase',
+        'auth pass-remove <email> [--current-pass <phrase>]': '(legacy) Remove single passphrase protection',
+        'auth pass-add <email> <new-passphrase> [--current-pass <phrase>]': 'Add a passphrase to an account (multiple passes allowed; --current-pass required if any pass already exists)',
+        'auth pass-rm <email> <passphrase> [--current-pass <phrase>]': 'Remove a specific passphrase from an account',
+        'auth pass-list <email>': 'List all passphrases and their calendar restrictions for an account',
+        'auth calendar-deny add <email> <passphrase> <calendarId>': 'Block a calendar for a specific passphrase',
+        'auth calendar-deny remove <email> <passphrase> <calendarId>': 'Unblock a calendar for a specific passphrase',
+        'auth calendar-deny list <email> <passphrase>': 'List blocked calendars for a passphrase',
         'credentials list': 'List configured OAuth credentials',
         'credentials set <file>': 'Set credentials from a Google-format JSON file (replaces existing)',
         'credentials append <file> [--name <name>]': 'Append credentials from a file (for multiple OAuth apps)',
@@ -103,6 +115,18 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
           break;
         case 'pass-remove':
           await authPassRemove(rest);
+          break;
+        case 'pass-add':
+          await authPassAdd(rest);
+          break;
+        case 'pass-rm':
+          await authPassRm(rest);
+          break;
+        case 'pass-list':
+          await authPassList(rest);
+          break;
+        case 'calendar-deny':
+          await authCalendarDeny(rest);
           break;
         default:
           usage();
@@ -298,6 +322,277 @@ export async function authPassRemove(argv: string[]): Promise<void> {
   delete account.passHash;
   await writeAccountStore(store);
   console.log(JSON.stringify({ ok: true, email: account.email, passProtected: false }));
+}
+
+// ─── auth pass-add ─────────────────────────────────────────
+
+export async function authPassAdd(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const flags = parseFlags(argv);
+  const email = pos[0];
+  const phrase = pos[1];
+
+  if (!email || !phrase) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth pass-add <email> <new-passphrase> [--current-pass <phrase>]' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  const hasProtection = !!(account.passHash || account.passes?.length);
+  if (hasProtection) {
+    const currentPass = flags['current-pass'];
+    if (!currentPass || !findPassEntry(account, currentPass)) {
+      console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Account is already protected. Provide a valid --current-pass <phrase> to add a new passphrase.' }));
+      process.exit(1);
+    }
+  }
+
+  addPassEntry(account, phrase);
+  await writeAccountStore(store);
+  console.log(JSON.stringify({ ok: true, email: account.email, passCount: account.passes?.length ?? 0 }));
+}
+
+// ─── auth pass-rm ──────────────────────────────────────────
+
+export async function authPassRm(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const flags = parseFlags(argv);
+  const email = pos[0];
+  const phrase = pos[1];
+
+  if (!email || !phrase) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth pass-rm <email> <passphrase> [--current-pass <phrase>]' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  // Authorization: the pass itself proves ownership, OR --current-pass provides an alternative proof.
+  const currentPass = flags['current-pass'];
+  const selfMatch = !!findPassEntry(account, phrase);
+  const altMatch = currentPass ? !!findPassEntry(account, currentPass) : false;
+  if (!selfMatch && !altMatch) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Passphrase not found on this account. Provide a valid --current-pass to authorize removal of a different passphrase.' }));
+    process.exit(1);
+  }
+
+  const removed = removePassEntry(account, phrase);
+  if (!removed) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: `Passphrase not found on account "${email}"` }));
+    process.exit(1);
+  }
+
+  await writeAccountStore(store);
+  clearAuthCache();
+  console.log(JSON.stringify({ ok: true, email: account.email, passCount: account.passes?.length ?? 0 }));
+}
+
+// ─── auth pass-list ────────────────────────────────────────
+
+export async function authPassList(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const email = pos[0];
+
+  if (!email) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth pass-list <email>' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  const passes: Array<{ index: number; type: string; calendarDeny?: string[] }> = [];
+  if (account.passHash) {
+    passes.push({ index: 0, type: 'legacy' });
+  }
+  for (const [i, p] of (account.passes ?? []).entries()) {
+    passes.push({
+      index: account.passHash ? i + 1 : i,
+      type: 'pass-add',
+      ...(p.calendarDeny?.length ? { calendarDeny: p.calendarDeny } : {}),
+    });
+  }
+
+  console.log(JSON.stringify({ email: account.email, passes }, null, 2));
+}
+
+// ─── auth calendar-deny ────────────────────────────────────
+
+export async function authCalendarDeny(argv: string[]): Promise<void> {
+  const [sub, ...rest] = argv;
+  switch (sub) {
+    case 'add':
+      await calendarDenyAdd(rest);
+      break;
+    case 'remove':
+      await calendarDenyRemove(rest);
+      break;
+    case 'list':
+      await calendarDenyList(rest);
+      break;
+    default:
+      console.log(JSON.stringify({
+        error: 'USAGE',
+        message: 'go-easy auth calendar-deny <add|remove|list> <email> <passphrase> [<calendarId>]',
+      }));
+      process.exit(1);
+  }
+}
+
+async function calendarDenyAdd(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const email = pos[0];
+  const phrase = pos[1];
+  const calendarId = pos[2];
+
+  if (!email || !phrase || !calendarId) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth calendar-deny add <email> <passphrase> <calendarId>' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  if (!findPassEntry(account, phrase)) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Passphrase not found. Add it first with: go-easy auth pass-add' }));
+    process.exit(1);
+  }
+
+  // Ensure the pass is in passes[] (not just legacy passHash) so it can carry a deny list.
+  addPassEntry(account, phrase);
+
+  const ok = addCalendarDeny(account, phrase, calendarId);
+  if (!ok) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Could not find pass entry for this passphrase' }));
+    process.exit(1);
+  }
+
+  await writeAccountStore(store);
+  console.log(JSON.stringify({ ok: true, email: account.email, calendarId, denyList: getCalendarDenyList(account, phrase) }));
+}
+
+async function calendarDenyRemove(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const flags = parseFlags(argv);
+  const email = pos[0];
+  const phrase = pos[1];
+  const calendarId = pos[2];
+
+  if (!email || !phrase || !calendarId) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth calendar-deny remove <email> <passphrase> <calendarId> --current-pass <auth-passphrase>' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  if (!findPassEntry(account, phrase)) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Passphrase not found on this account' }));
+    process.exit(1);
+  }
+
+  // Require a separate authorizing pass that itself has access to the calendar.
+  // An agent cannot remove its own restriction — only a pass with broader access can authorize.
+  const authPass = flags['current-pass'];
+  if (!authPass) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Removing a calendar restriction requires --current-pass with a passphrase that has access to that calendar.' }));
+    process.exit(1);
+  }
+  if (!findPassEntry(account, authPass)) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Authorizing passphrase is incorrect.' }));
+    process.exit(1);
+  }
+  if (getCalendarDenyList(account, authPass).includes(calendarId)) {
+    console.log(JSON.stringify({ error: 'ACCESS_DENIED', message: `Authorizing passphrase does not have access to calendar "${calendarId}".` }));
+    process.exit(1);
+  }
+
+  const removed = removeCalendarDeny(account, phrase, calendarId);
+  if (!removed) {
+    console.log(JSON.stringify({ error: 'NOT_FOUND', message: `Calendar "${calendarId}" was not in the deny list for this passphrase` }));
+    process.exit(1);
+  }
+
+  await writeAccountStore(store);
+  console.log(JSON.stringify({ ok: true, email: account.email, calendarId, denyList: getCalendarDenyList(account, phrase) }));
+}
+
+async function calendarDenyList(argv: string[]): Promise<void> {
+  const pos = positionals(argv);
+  const email = pos[0];
+  const phrase = pos[1];
+
+  if (!email || !phrase) {
+    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth calendar-deny list <email> <passphrase>' }));
+    process.exit(1);
+  }
+
+  const store = await readAccountStore();
+  if (!store) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
+    process.exit(1);
+  }
+
+  const account = findAccount(store, email);
+  if (!account) {
+    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
+    process.exit(1);
+  }
+
+  if (!findPassEntry(account, phrase)) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Passphrase not found on this account' }));
+    process.exit(1);
+  }
+
+  console.log(JSON.stringify({ email: account.email, calendarDeny: getCalendarDenyList(account, phrase) }, null, 2));
 }
 
 // ─── credentials list ──────────────────────────────────────

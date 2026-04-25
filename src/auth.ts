@@ -18,6 +18,7 @@ import {
   findAccount,
   resolveToken,
   filterAccountsByPass,
+  getCalendarDenyList as storeGetCalendarDenyList,
 } from './auth-store.js';
 import type { GoogleService, AccountStore } from './auth-store.js';
 export type { GoogleService } from './auth-store.js';
@@ -172,6 +173,24 @@ export async function listAllAccounts(passes: string[] = []): Promise<
  */
 export function clearAuthCache(): void {
   clientCache.clear();
+}
+
+/**
+ * Return the calendar deny list for the active passphrase on an account.
+ *
+ * Used by the calendar CLI after getAuth() to enforce per-pass calendar restrictions.
+ * Returns [] when no pass is supplied, the account is not found, or the pass has no deny list.
+ */
+export async function getCalendarDenyList(
+  accountEmail: string | undefined,
+  pass: string | undefined
+): Promise<string[]> {
+  if (!pass) return [];
+  const rawStore = await readAccountStore();
+  if (!rawStore) return [];
+  const account = findAccount(rawStore, accountEmail);
+  if (!account) return [];
+  return storeGetCalendarDenyList(account, pass);
 }
 
 

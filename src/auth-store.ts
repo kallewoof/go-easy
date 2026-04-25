@@ -26,10 +26,19 @@ export interface OAuthToken {
   grantedAt: string;
 }
 
+/** A single passphrase entry with optional per-service access restrictions. */
+export interface PassEntry {
+  hash: string;
+  calendarDeny?: string[];
+}
+
 export interface GoEasyAccount {
   email: string;
   clientId?: string;
+  /** @deprecated Use passes[] for new accounts. Kept for backward compatibility. */
   passHash?: string;
+  /** Multi-pass entries. Each pass independently unlocks the account and can carry its own restrictions. */
+  passes?: PassEntry[];
   tokens: {
     combined?: OAuthToken;
     gmail?: OAuthToken;
@@ -290,18 +299,101 @@ export function hashPass(pass: string): string {
 /**
  * Return a store containing only accounts visible to the given passphrases.
  *
- * - Accounts with no passHash are always visible.
- * - Accounts with a passHash are visible only when a matching pass is supplied.
- * - If no passes are given, only unprotected accounts are returned.
+ * An account is unprotected (always visible) if it has neither passHash nor passes[].
+ * A protected account is visible when any supplied pass matches its passHash or any passes[] entry.
  */
 export function filterAccountsByPass(store: AccountStore, passes: string[]): AccountStore {
   const hashed = passes.map(hashPass);
   return {
     ...store,
-    accounts: store.accounts.filter(
-      (a) => !a.passHash || hashed.includes(a.passHash)
-    ),
+    accounts: store.accounts.filter((a) => {
+      const isProtected = !!(a.passHash || a.passes?.length);
+      if (!isProtected) return true;
+      if (a.passHash && hashed.includes(a.passHash)) return true;
+      return a.passes?.some((p) => hashed.includes(p.hash)) ?? false;
+    }),
   };
+}
+
+/**
+ * Find the PassEntry for a given plaintext passphrase.
+ * Checks passes[] first, then falls back to the legacy passHash field.
+ * Returns null if no match is found.
+ *
+ * For a legacy passHash match, returns { hash } with no calendarDeny (no restrictions).
+ */
+export function findPassEntry(account: GoEasyAccount, pass: string): PassEntry | null {
+  const h = hashPass(pass);
+  const entry = account.passes?.find((p) => p.hash === h);
+  if (entry) return entry;
+  if (account.passHash === h) return { hash: h };
+  return null;
+}
+
+/**
+ * Return the calendar deny list for the given plaintext passphrase.
+ * Returns [] if the pass is not found or has no deny list configured.
+ */
+export function getCalendarDenyList(account: GoEasyAccount, pass: string): string[] {
+  return findPassEntry(account, pass)?.calendarDeny ?? [];
+}
+
+/**
+ * Add a new pass entry to passes[]. Returns the entry (existing or newly created).
+ * Idempotent: if the hash already exists in passes[], the existing entry is returned unchanged.
+ */
+export function addPassEntry(account: GoEasyAccount, pass: string): PassEntry {
+  const h = hashPass(pass);
+  if (!account.passes) account.passes = [];
+  const existing = account.passes.find((p) => p.hash === h);
+  if (existing) return existing;
+  const entry: PassEntry = { hash: h };
+  account.passes.push(entry);
+  return entry;
+}
+
+/**
+ * Remove the passes[] entry (or legacy passHash) matching the given plaintext passphrase.
+ * Returns true if an entry was removed, false if not found.
+ */
+export function removePassEntry(account: GoEasyAccount, pass: string): boolean {
+  const h = hashPass(pass);
+  const before = account.passes?.length ?? 0;
+  account.passes = account.passes?.filter((p) => p.hash !== h) ?? [];
+  if (account.passes.length < before) return true;
+  if (account.passHash === h) {
+    delete account.passHash;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Add a calendar ID to the deny list for the given passphrase.
+ * Returns false if the pass entry does not exist in passes[] (legacy passHash entries
+ * cannot carry a deny list — use pass-add first to migrate).
+ * Idempotent: adding an already-denied calendar ID has no effect.
+ */
+export function addCalendarDeny(account: GoEasyAccount, pass: string, calendarId: string): boolean {
+  const h = hashPass(pass);
+  const entry = account.passes?.find((p) => p.hash === h);
+  if (!entry) return false;
+  if (!entry.calendarDeny) entry.calendarDeny = [];
+  if (!entry.calendarDeny.includes(calendarId)) entry.calendarDeny.push(calendarId);
+  return true;
+}
+
+/**
+ * Remove a calendar ID from the deny list for the given passphrase.
+ * Returns false if the pass entry or calendar ID was not found.
+ */
+export function removeCalendarDeny(account: GoEasyAccount, pass: string, calendarId: string): boolean {
+  const h = hashPass(pass);
+  const entry = account.passes?.find((p) => p.hash === h);
+  if (!entry?.calendarDeny) return false;
+  const before = entry.calendarDeny.length;
+  entry.calendarDeny = entry.calendarDeny.filter((id) => id !== calendarId);
+  return entry.calendarDeny.length < before;
 }
 
 /**

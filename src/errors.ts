@@ -120,3 +120,14 @@ export class SafetyError extends GoEasyError {
     this.name = 'SafetyError';
   }
 }
+
+/** Calendar access denied by the passphrase's deny list */
+export class AccessDeniedError extends GoEasyError {
+  constructor(calendarIds: string[]) {
+    super(
+      `Access denied: calendar(s) ${calendarIds.join(', ')} are restricted for this passphrase`,
+      'ACCESS_DENIED'
+    );
+    this.name = 'AccessDeniedError';
+  }
+}

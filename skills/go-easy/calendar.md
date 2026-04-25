@@ -391,6 +391,27 @@ interface FreeBusyResult {
 }
 ```
 
+## Pass-based Calendar Access Control
+
+When using `--pass`, you can restrict which calendars are visible or accessible to that passphrase. This lets you give an agent a pass that hides sensitive calendars (e.g. your primary personal calendar) while keeping shared or family calendars accessible.
+
+**Behavior by command:**
+
+| Command | Deny-list behavior |
+|---------|-------------------|
+| `calendars` | Denied calendar IDs are silently filtered from the result |
+| `events *` / `events own` | Denied calendars are excluded before expansion — they are never queried |
+| `events <id>` / `events id1,id2` | If any ID is in the deny list → `ACCESS_DENIED` error (no data returned) |
+| `event <calendarId> <eventId>` | If calendarId is denied → `ACCESS_DENIED` |
+| `create <calendarId>` | If calendarId is denied → `ACCESS_DENIED` |
+| `update <calendarId>` | If calendarId is denied → `ACCESS_DENIED` |
+| `delete <calendarId>` | If calendarId is denied → `ACCESS_DENIED` |
+| `freebusy <id1,id2>` | If any ID is denied → `ACCESS_DENIED` |
+
+Configure deny lists with `go-easy auth calendar-deny` — see [SKILL.md](SKILL.md) for the full workflow.
+
+**Note on removing restrictions:** `calendar-deny remove` requires `--current-pass` with a passphrase that itself has access to the calendar. An agent cannot lift its own restriction — only a pass with broader access can authorize the removal. If the authorizing pass is also denied for that calendar, the command fails with `ACCESS_DENIED`.
+
 ## Error Codes
 
 | Code | Meaning | Exit Code |
@@ -401,6 +422,7 @@ interface FreeBusyResult {
 | `AUTH_MISSING_SCOPE` | Account exists but missing Calendar scope | 1 |
 | `AUTH_TOKEN_REVOKED` | Refresh token revoked — re-auth needed | 1 |
 | `AUTH_NO_CREDENTIALS` | OAuth credentials missing | 1 |
+| `ACCESS_DENIED` | Calendar ID is in the deny list for this passphrase | 1 |
 | `NOT_FOUND` | Event not found (404) | 1 |
 | `QUOTA_EXCEEDED` | Calendar API rate limit (429) — wait 30s and retry | 1 |
 | `SAFETY_BLOCKED` | Destructive op without `--confirm` | 2 |

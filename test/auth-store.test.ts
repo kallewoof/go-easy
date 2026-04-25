@@ -27,6 +27,12 @@ import {
   removeAccount,
   hashPass,
   filterAccountsByPass,
+  findPassEntry,
+  getCalendarDenyList,
+  addPassEntry,
+  removePassEntry,
+  addCalendarDeny,
+  removeCalendarDeny,
 } from '../src/auth-store.js';
 import type { AccountStore, GoEasyAccount } from '../src/auth-store.js';
 
@@ -386,5 +392,245 @@ describe('writeCredentials', () => {
     expect(mockRename).toHaveBeenCalledOnce();
     const writePath = mockWriteFile.mock.calls[0][0] as string;
     expect(writePath).toContain('credentials.json.tmp');
+  });
+});
+
+// ─── Multi-pass: fixtures ──────────────────────────────────
+
+const makePassAccount = (overrides: Partial<GoEasyAccount> = {}): GoEasyAccount => ({
+  email: 'alice@example.com',
+  tokens: { combined: { refreshToken: 'rt', scopes: [], grantedAt: '2026-01-01T00:00:00Z' } },
+  addedAt: '2026-01-01T00:00:00Z',
+  ...overrides,
+});
+
+// ─── findPassEntry ─────────────────────────────────────────
+
+describe('findPassEntry', () => {
+  it('finds a matching passes[] entry', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('secret') }] });
+    const entry = findPassEntry(account, 'secret');
+    expect(entry).not.toBeNull();
+    expect(entry!.hash).toBe(hashPass('secret'));
+  });
+
+  it('returns entry with deny list intact', () => {
+    const account = makePassAccount({
+      passes: [{ hash: hashPass('secret'), calendarDeny: ['cal1', 'cal2'] }],
+    });
+    expect(findPassEntry(account, 'secret')!.calendarDeny).toEqual(['cal1', 'cal2']);
+  });
+
+  it('falls back to legacy passHash', () => {
+    const account = makePassAccount({ passHash: hashPass('legacy') });
+    const entry = findPassEntry(account, 'legacy');
+    expect(entry).not.toBeNull();
+    expect(entry!.hash).toBe(hashPass('legacy'));
+  });
+
+  it('legacy passHash match has no calendarDeny', () => {
+    const account = makePassAccount({ passHash: hashPass('legacy') });
+    expect(findPassEntry(account, 'legacy')!.calendarDeny).toBeUndefined();
+  });
+
+  it('returns null for wrong passphrase', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('right') }] });
+    expect(findPassEntry(account, 'wrong')).toBeNull();
+  });
+
+  it('returns null when no passes configured', () => {
+    expect(findPassEntry(makePassAccount(), 'anything')).toBeNull();
+  });
+});
+
+// ─── getCalendarDenyList ───────────────────────────────────
+
+describe('getCalendarDenyList', () => {
+  it('returns [] when pass not found', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('other') }] });
+    expect(getCalendarDenyList(account, 'unknown')).toEqual([]);
+  });
+
+  it('returns [] when entry has no calendarDeny', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }] });
+    expect(getCalendarDenyList(account, 'p')).toEqual([]);
+  });
+
+  it('returns the calendarDeny array', () => {
+    const account = makePassAccount({
+      passes: [{ hash: hashPass('p'), calendarDeny: ['cal1'] }],
+    });
+    expect(getCalendarDenyList(account, 'p')).toEqual(['cal1']);
+  });
+
+  it('returns [] for legacy passHash match (no deny list possible)', () => {
+    const account = makePassAccount({ passHash: hashPass('legacy') });
+    expect(getCalendarDenyList(account, 'legacy')).toEqual([]);
+  });
+});
+
+// ─── addPassEntry ──────────────────────────────────────────
+
+describe('addPassEntry', () => {
+  it('creates passes[] when absent and adds entry', () => {
+    const account = makePassAccount();
+    addPassEntry(account, 'newpass');
+    expect(account.passes).toHaveLength(1);
+    expect(account.passes![0].hash).toBe(hashPass('newpass'));
+  });
+
+  it('appends to existing passes[]', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('first') }] });
+    addPassEntry(account, 'second');
+    expect(account.passes).toHaveLength(2);
+  });
+
+  it('is idempotent — does not duplicate an existing hash', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }] });
+    addPassEntry(account, 'p');
+    addPassEntry(account, 'p');
+    expect(account.passes).toHaveLength(1);
+  });
+
+  it('returns the existing entry when hash already present', () => {
+    const entry = { hash: hashPass('p'), calendarDeny: ['cal1'] };
+    const account = makePassAccount({ passes: [entry] });
+    const returned = addPassEntry(account, 'p');
+    expect(returned).toBe(entry);
+    expect(returned.calendarDeny).toEqual(['cal1']);
+  });
+});
+
+// ─── removePassEntry ───────────────────────────────────────
+
+describe('removePassEntry', () => {
+  it('removes a matching passes[] entry', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }, { hash: hashPass('q') }] });
+    expect(removePassEntry(account, 'p')).toBe(true);
+    expect(account.passes).toHaveLength(1);
+    expect(account.passes![0].hash).toBe(hashPass('q'));
+  });
+
+  it('removes legacy passHash', () => {
+    const account = makePassAccount({ passHash: hashPass('legacy') });
+    expect(removePassEntry(account, 'legacy')).toBe(true);
+    expect(account.passHash).toBeUndefined();
+  });
+
+  it('returns false when pass not found', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }] });
+    expect(removePassEntry(account, 'notfound')).toBe(false);
+  });
+
+  it('returns false on account with no passes', () => {
+    expect(removePassEntry(makePassAccount(), 'anything')).toBe(false);
+  });
+});
+
+// ─── addCalendarDeny ──────────────────────────────────────
+
+describe('addCalendarDeny', () => {
+  it('adds a calendarId to the deny list', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }] });
+    expect(addCalendarDeny(account, 'p', 'cal1')).toBe(true);
+    expect(account.passes![0].calendarDeny).toEqual(['cal1']);
+  });
+
+  it('is idempotent — does not duplicate a calendarId', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p'), calendarDeny: ['cal1'] }] });
+    addCalendarDeny(account, 'p', 'cal1');
+    expect(account.passes![0].calendarDeny).toHaveLength(1);
+  });
+
+  it('appends to an existing calendarDeny list', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p'), calendarDeny: ['cal1'] }] });
+    addCalendarDeny(account, 'p', 'cal2');
+    expect(account.passes![0].calendarDeny).toEqual(['cal1', 'cal2']);
+  });
+
+  it('returns false if pass not found in passes[]', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('other') }] });
+    expect(addCalendarDeny(account, 'notfound', 'cal1')).toBe(false);
+  });
+
+  it('returns false for legacy passHash (cannot carry deny list)', () => {
+    const account = makePassAccount({ passHash: hashPass('legacy') });
+    expect(addCalendarDeny(account, 'legacy', 'cal1')).toBe(false);
+  });
+});
+
+// ─── removeCalendarDeny ───────────────────────────────────
+
+describe('removeCalendarDeny', () => {
+  it('removes an existing calendarId from the deny list', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p'), calendarDeny: ['cal1', 'cal2'] }] });
+    expect(removeCalendarDeny(account, 'p', 'cal1')).toBe(true);
+    expect(account.passes![0].calendarDeny).toEqual(['cal2']);
+  });
+
+  it('returns false if calendarId not in deny list', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p'), calendarDeny: ['cal1'] }] });
+    expect(removeCalendarDeny(account, 'p', 'cal2')).toBe(false);
+  });
+
+  it('returns false if calendarDeny is absent', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('p') }] });
+    expect(removeCalendarDeny(account, 'p', 'cal1')).toBe(false);
+  });
+
+  it('returns false if pass not found', () => {
+    const account = makePassAccount({ passes: [{ hash: hashPass('other') }] });
+    expect(removeCalendarDeny(account, 'notfound', 'cal1')).toBe(false);
+  });
+});
+
+// ─── filterAccountsByPass (passes[] extensions) ───────────
+
+describe('filterAccountsByPass — passes[] support', () => {
+  const pass1 = 'alpha';
+  const pass2 = 'beta';
+
+  const passesOnly: GoEasyAccount = makePassAccount({
+    passes: [{ hash: hashPass(pass1) }, { hash: hashPass(pass2) }],
+  });
+
+  const bothFields: GoEasyAccount = makePassAccount({
+    passHash: hashPass('legacy'),
+    passes: [{ hash: hashPass(pass1) }],
+  });
+
+  it('hides account with passes[] when no pass supplied', () => {
+    const store = makeStore([passesOnly]);
+    expect(filterAccountsByPass(store, []).accounts).toHaveLength(0);
+  });
+
+  it('shows account when first pass matches passes[]', () => {
+    const store = makeStore([passesOnly]);
+    expect(filterAccountsByPass(store, [pass1]).accounts).toHaveLength(1);
+  });
+
+  it('shows account when second pass matches passes[]', () => {
+    const store = makeStore([passesOnly]);
+    expect(filterAccountsByPass(store, [pass2]).accounts).toHaveLength(1);
+  });
+
+  it('hides account when wrong pass supplied', () => {
+    const store = makeStore([passesOnly]);
+    expect(filterAccountsByPass(store, ['wrong']).accounts).toHaveLength(0);
+  });
+
+  it('shows account when passes[] matches (even if passHash does not)', () => {
+    const store = makeStore([bothFields]);
+    expect(filterAccountsByPass(store, [pass1]).accounts).toHaveLength(1);
+  });
+
+  it('shows account when legacy passHash matches (even if passes[] does not)', () => {
+    const store = makeStore([bothFields]);
+    expect(filterAccountsByPass(store, ['legacy']).accounts).toHaveLength(1);
+  });
+
+  it('multiple passes in call: account shown if any matches', () => {
+    const store = makeStore([passesOnly]);
+    expect(filterAccountsByPass(store, ['wrong', pass2]).accounts).toHaveLength(1);
   });
 });

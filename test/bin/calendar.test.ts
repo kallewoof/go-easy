@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseFlags, positional, buildSpecialEventFlags, assertKnownFlags, VALID_FLAGS, parseReminderFlag, main } from '../../src/bin/calendar.js';
 import * as calendarModule from '../../src/calendar/index.js';
 import { setSafetyContext } from '../../src/safety.js';
-import { getAuth } from '../../src/auth.js';
+import { getAuth, getCalendarDenyList } from '../../src/auth.js';
 
 vi.mock('../../src/auth.js', () => ({
   getAuth: vi.fn().mockResolvedValue('fake-auth'),
+  getCalendarDenyList: vi.fn().mockResolvedValue([]),
 }));
 vi.mock('../../src/safety.js', () => ({ setSafetyContext: vi.fn() }));
 vi.mock('../../src/calendar/index.js', () => ({
@@ -416,4 +417,134 @@ describe('main()', () => {
       expect(vi.mocked(getAuth)).toHaveBeenCalledWith('calendar', ACC, 'secret');
     });
   }
+});
+
+// ─── deny-list enforcement ─────────────────────────────────
+
+describe('deny-list enforcement', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+  });
+  afterEach(() => { logSpy?.mockRestore(); errSpy?.mockRestore(); exitSpy?.mockRestore(); });
+
+  it('calendars — filters denied calendars from result', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'private@group.calendar.google.com', summary: 'Private' },
+    ]);
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['private@group.calendar.google.com']);
+    await main([ACC, 'calendars']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output).toHaveLength(1);
+    expect(output[0].id).toBe('primary');
+  });
+
+  it('calendars — empty deny list shows all calendars', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'work', summary: 'Work' },
+    ]);
+    await main([ACC, 'calendars']);
+    const output = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(output).toHaveLength(2);
+  });
+
+  it('events * — skips denied calendars during expansion', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'private@group.calendar.google.com', summary: 'Private' },
+    ]);
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['private@group.calendar.google.com']);
+    await main([ACC, 'events', '*', '--from=2026-01-01']);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
+  });
+
+  it('events <denied-id> — exits with ACCESS_DENIED', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(main([ACC, 'events', 'denied@example.com'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.listEvents)).not.toHaveBeenCalled();
+  });
+
+  it('events primary,denied — exits with ACCESS_DENIED for denied subset', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(main([ACC, 'events', 'primary,denied@example.com'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.listEvents)).not.toHaveBeenCalled();
+  });
+
+  it('event <denied-id> <eventId> — exits with ACCESS_DENIED', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(main([ACC, 'event', 'denied@example.com', 'evt1'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.getEvent)).not.toHaveBeenCalled();
+  });
+
+  it('create <denied-id> — exits with ACCESS_DENIED', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(
+      main([ACC, 'create', 'denied@example.com', '--summary=X', '--start=2026-01-01', '--end=2026-01-02'])
+    ).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.createEvent)).not.toHaveBeenCalled();
+  });
+
+  it('update <denied-id> — exits with ACCESS_DENIED', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(
+      main([ACC, 'update', 'denied@example.com', 'evt1', '--summary=X', '--start=2026-01-01', '--end=2026-01-02'])
+    ).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.updateEvent)).not.toHaveBeenCalled();
+  });
+
+  it('delete <denied-id> — exits with ACCESS_DENIED', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(main([ACC, 'delete', 'denied@example.com', 'evt1', '--confirm'])).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.deleteEvent)).not.toHaveBeenCalled();
+  });
+
+  it('freebusy — exits with ACCESS_DENIED when any calendar is denied', async () => {
+    vi.mocked(getCalendarDenyList).mockResolvedValueOnce(['denied@example.com']);
+    await expect(
+      main([ACC, 'freebusy', 'primary,denied@example.com', '--from=2026-01-01', '--to=2026-01-31'])
+    ).rejects.toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('ACCESS_DENIED');
+    expect(vi.mocked(calendarModule.queryFreeBusy)).not.toHaveBeenCalled();
+  });
+
+  it('freebusy — succeeds when no denied calendars', async () => {
+    await main([ACC, 'freebusy', 'primary,work', '--from=2026-01-01', '--to=2026-01-31']);
+    expect(vi.mocked(calendarModule.queryFreeBusy)).toHaveBeenCalledWith(
+      'fake-auth', ['primary', 'work'], '2026-01-01', '2026-01-31',
+    );
+  });
+
+  it('--pass is forwarded to getCalendarDenyList', async () => {
+    await main([ACC, 'calendars', '--pass=agent-secret']);
+    expect(vi.mocked(getCalendarDenyList)).toHaveBeenCalledWith(ACC, 'agent-secret');
+  });
 });

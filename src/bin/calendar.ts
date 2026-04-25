@@ -16,8 +16,9 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import { getAuth } from '../auth.js';
+import { getAuth, getCalendarDenyList } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
+import { AccessDeniedError } from '../errors.js';
 import * as calendar from '../calendar/index.js';
 
 function usage(): never {
@@ -190,13 +191,16 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
   try {
     const auth = await getAuth('calendar', account, flags.pass);
+    const denyList = await getCalendarDenyList(account, flags.pass);
     assertKnownFlags(command, flags);
     let result: unknown;
 
     switch (command) {
-      case 'calendars':
-        result = await calendar.listCalendars(auth);
+      case 'calendars': {
+        const all = await calendar.listCalendars(auth);
+        result = denyList.length ? all.filter((c) => !denyList.includes(c.id)) : all;
         break;
+      }
 
       case 'events': {
         if (!pos[0]) usage();
@@ -204,9 +208,14 @@ export async function main(args: string[] = process.argv.slice(2)) {
         const ownOnly = pos[0] === 'own';
         const calIds = (wildcard || ownOnly)
           ? (await calendar.listCalendars(auth))
+              .filter((c) => !denyList.includes(c.id))
               .filter((c) => !ownOnly || c.accessRole === 'owner')
               .map((c) => c.id)
           : pos[0].split(',');
+        if (!wildcard && !ownOnly && denyList.length) {
+          const denied = calIds.filter((id) => denyList.includes(id));
+          if (denied.length) throw new AccessDeniedError(denied);
+        }
         const eventsOpts = {
           timeMin: flags.from ?? new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
           timeMax: flags.to,
@@ -235,11 +244,13 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
       case 'event':
         if (!pos[0] || !pos[1]) usage();
+        if (denyList.includes(pos[0])) throw new AccessDeniedError([pos[0]]);
         result = await calendar.getEvent(auth, pos[0], pos[1]);
         break;
 
       case 'create': {
         if (!pos[0]) usage();
+        if (denyList.includes(pos[0])) throw new AccessDeniedError([pos[0]]);
         const createOpts: calendar.EventOptions = {
           summary: flags.summary ?? '',
           description: flags.description,
@@ -260,6 +271,7 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
       case 'update': {
         if (!pos[0] || !pos[1]) usage();
+        if (denyList.includes(pos[0])) throw new AccessDeniedError([pos[0]]);
         // Only include fields the user actually provided (PATCH semantics)
         const updateOpts: calendar.EventOptions = {
           summary: flags.summary ?? '',
@@ -283,12 +295,17 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
       case 'delete':
         if (!pos[0] || !pos[1]) usage();
+        if (denyList.includes(pos[0])) throw new AccessDeniedError([pos[0]]);
         result = await calendar.deleteEvent(auth, pos[0], pos[1]);
         break;
 
       case 'freebusy': {
         if (!pos[0] || !flags.from || !flags.to) usage();
         const calIds = pos[0].split(',');
+        if (denyList.length) {
+          const denied = calIds.filter((id) => denyList.includes(id));
+          if (denied.length) throw new AccessDeniedError(denied);
+        }
         result = await calendar.queryFreeBusy(auth, calIds, flags.from, flags.to);
         break;
       }

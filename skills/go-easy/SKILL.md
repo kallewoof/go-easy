@@ -140,6 +140,58 @@ npx go-sheets marc@blegal.eu tabs <id> --pass mysecretphrase
 | `AUTH_PROTECTED` | Account exists but `--pass` was not supplied |
 | `AUTH_PASS_WRONG` | `--pass` was supplied but incorrect |
 
+### Per-pass calendar access control
+
+An account can have multiple named pass entries. Each pass can carry a **calendar deny list** — calendar IDs the pass cannot see or access. Use this to give an agent a restricted pass that hides private calendars while keeping shared/family calendars visible.
+
+**Manage passes on an account:**
+
+```bash
+# Add a new pass (no --current-pass needed for unprotected accounts)
+npx go-easy auth pass-add alice@gmail.com agent-pass
+
+# Add a pass to an already-protected account (requires existing pass)
+npx go-easy auth pass-add alice@gmail.com agent-pass --current-pass admin-pass
+
+# List all passes and their calendar deny lists
+npx go-easy auth pass-list alice@gmail.com
+
+# Remove a pass (the pass itself proves ownership)
+npx go-easy auth pass-rm alice@gmail.com agent-pass
+
+# Remove a pass using an alternative authorizing pass
+npx go-easy auth pass-rm alice@gmail.com agent-pass --current-pass admin-pass
+```
+
+**Configure calendar restrictions for a pass:**
+
+```bash
+# Deny access to alice's primary calendar for the agent pass
+npx go-easy auth calendar-deny add alice@gmail.com agent-pass alice@gmail.com
+
+# Remove a calendar restriction (requires an authorizing pass that has access to the calendar)
+# An agent cannot remove its own restriction — only a pass with broader access can authorize.
+npx go-easy auth calendar-deny remove alice@gmail.com agent-pass alice@gmail.com --current-pass admin-pass
+
+# List all restrictions for a pass
+npx go-easy auth calendar-deny list alice@gmail.com agent-pass
+```
+
+**Using the restricted pass:**
+
+```bash
+# Only shows non-denied calendars
+npx go-calendar alice@gmail.com calendars --pass agent-pass
+
+# Events from all non-denied calendars
+npx go-calendar alice@gmail.com events '*' --from=2026-01-01 --pass agent-pass
+
+# Direct access to a denied calendar → ACCESS_DENIED error
+npx go-calendar alice@gmail.com events alice@gmail.com --pass agent-pass
+```
+
+See [calendar.md](calendar.md) for the full per-command deny-list behavior.
+
 ### Error recovery
 
 All service CLIs throw structured auth errors with a `fix` field:
