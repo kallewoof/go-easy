@@ -184,7 +184,7 @@ describe('main()', () => {
     await main([ACC, 'events', 'primary', '--from=2026-01-01', '--max=5']);
     expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith(
       'fake-auth', 'primary',
-      expect.objectContaining({ timeMin: '2026-01-01', maxResults: 5 }),
+      expect.objectContaining({ timeMin: '2026-01-01T00:00:00Z', maxResults: 5 }),
     );
   });
 
@@ -212,7 +212,7 @@ describe('main()', () => {
     vi.mocked(calendarModule.listEvents).mockClear();
     await main([ACC, 'events', 'primary', '--from=1930-01-01']);
     const optsWithFrom = vi.mocked(calendarModule.listEvents).mock.calls[0][2];
-    expect(optsWithFrom.timeMin).toBe('1930-01-01'); // explicit past date passes through
+    expect(optsWithFrom.timeMin).toBe('1930-01-01T00:00:00Z'); // explicit past date normalized to RFC3339
   });
 
   it('events --event-types — passes event type filter', async () => {

@@ -216,9 +216,10 @@ export async function main(args: string[] = process.argv.slice(2)) {
           const denied = calIds.filter((id) => denyList.includes(id));
           if (denied.length) throw new AccessDeniedError(denied);
         }
+        const toRfc3339 = (d: string) => d.includes('T') ? d : d + 'T00:00:00Z';
         const eventsOpts = {
-          timeMin: flags.from ?? new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
-          timeMax: flags.to,
+          timeMin: toRfc3339(flags.from ?? new Date().toISOString().slice(0, 10)),
+          timeMax: flags.to ? toRfc3339(flags.to) : undefined,
           maxResults: flags.max ? parseInt(flags.max) : undefined,
           query: flags.query,
           pageToken: flags['page-token'],
