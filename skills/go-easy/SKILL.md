@@ -103,25 +103,25 @@ Without `--confirm`: shows what would happen, exits with code 2.
 
 ### Passphrase-protected accounts
 
-Accounts can be protected with a passphrase. A protected account is completely invisible — it doesn't appear in `auth list` and returns `AUTH_NO_ACCOUNT` from service CLIs — unless the caller supplies the correct `--pass`.
+Accounts can be protected with one or more passphrases. A protected account is completely invisible — it doesn't appear in `auth list` and returns `AUTH_NO_ACCOUNT` from service CLIs — unless the caller supplies a correct `--pass`.
 
 This is a project-scoping mechanism: store the passphrase in the project's `CLAUDE.md` so only agents working in that project can use the account.
 
-**Protect an account:**
+**Add a passphrase to an account:**
 ```bash
-npx go-easy auth pass-set marc@blegal.eu mysecretphrase
-# → { "ok": true, "email": "marc@blegal.eu", "passProtected": true }
+npx go-easy auth pass-add marc@blegal.eu mysecretphrase
+# → { "ok": true, "email": "marc@blegal.eu", "passCount": 1 }
 ```
 
-**Change a passphrase** (requires the current one):
+**Add another passphrase** (requires an existing one):
 ```bash
-npx go-easy auth pass-set marc@blegal.eu newphrase --current-pass mysecretphrase
+npx go-easy auth pass-add marc@blegal.eu newphrase --current-pass mysecretphrase
 ```
 
-**Remove passphrase protection** (requires the current one):
+**Remove a passphrase** (the passphrase itself proves ownership):
 ```bash
-npx go-easy auth pass-remove marc@blegal.eu --current-pass mysecretphrase
-# → { "ok": true, "email": "marc@blegal.eu", "passProtected": false }
+npx go-easy auth pass-rm marc@blegal.eu mysecretphrase
+# → { "ok": true, "email": "marc@blegal.eu", "passCount": 0 }
 ```
 
 **Use a protected account** — pass `--pass` to any service CLI:

@@ -46,8 +46,6 @@ export function usage(): never {
         'auth list [--pass <phrase>]': 'List accounts visible with the given passphrase (unprotected accounts always shown)',
         'auth add <email> [--credentials <name|index>]': 'Add or upgrade an account (starts auth flow)',
         'auth remove <email> --confirm': 'Remove an account',
-        'auth pass-set <email> <new-passphrase> [--current-pass <phrase>]': '(legacy) Protect an account with a single passphrase',
-        'auth pass-remove <email> [--current-pass <phrase>]': '(legacy) Remove single passphrase protection',
         'auth pass-add <email> <new-passphrase> [--current-pass <phrase>]': 'Add a passphrase to an account (multiple passes allowed; --current-pass required if any pass already exists)',
         'auth pass-rm <email> <passphrase> [--current-pass <phrase>]': 'Remove a specific passphrase from an account',
         'auth pass-list <email>': 'List all passphrases and their calendar restrictions for an account',
@@ -109,12 +107,6 @@ export async function main(args: string[] = process.argv.slice(2)): Promise<void
           break;
         case 'remove':
           await authRemove(rest);
-          break;
-        case 'pass-set':
-          await authPassSet(rest);
-          break;
-        case 'pass-remove':
-          await authPassRemove(rest);
           break;
         case 'pass-add':
           await authPassAdd(rest);
@@ -249,81 +241,6 @@ export async function authRemove(argv: string[]): Promise<void> {
   );
 }
 
-// ─── auth pass-set ─────────────────────────────────────────
-
-export async function authPassSet(argv: string[]): Promise<void> {
-  const pos = positionals(argv);
-  const flags = parseFlags(argv);
-  const email = pos[0];
-  const phrase = pos[1];
-
-  if (!email || !phrase) {
-    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth pass-set <email> <new-passphrase> [--current-pass <phrase>]' }));
-    process.exit(1);
-  }
-
-  const store = await readAccountStore();
-  if (!store) {
-    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
-    process.exit(1);
-  }
-
-  const account = findAccount(store, email);
-  if (!account) {
-    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
-    process.exit(1);
-  }
-
-  if (account.passHash) {
-    const currentPass = flags['current-pass'];
-    if (!currentPass || hashPass(currentPass) !== account.passHash) {
-      console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Current passphrase required: --current-pass <phrase>' }));
-      process.exit(1);
-    }
-  }
-
-  account.passHash = hashPass(phrase);
-  await writeAccountStore(store);
-  console.log(JSON.stringify({ ok: true, email: account.email, passProtected: true }));
-}
-
-// ─── auth pass-remove ──────────────────────────────────────
-
-export async function authPassRemove(argv: string[]): Promise<void> {
-  const pos = positionals(argv);
-  const flags = parseFlags(argv);
-  const email = pos[0];
-
-  if (!email) {
-    console.log(JSON.stringify({ error: 'USAGE', message: 'go-easy auth pass-remove <email> [--current-pass <phrase>]' }));
-    process.exit(1);
-  }
-
-  const store = await readAccountStore();
-  if (!store) {
-    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: 'No accounts configured' }));
-    process.exit(1);
-  }
-
-  const account = findAccount(store, email);
-  if (!account) {
-    console.log(JSON.stringify({ error: 'AUTH_NO_ACCOUNT', message: `Account "${email}" not found` }));
-    process.exit(1);
-  }
-
-  if (account.passHash) {
-    const currentPass = flags['current-pass'];
-    if (!currentPass || hashPass(currentPass) !== account.passHash) {
-      console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'Current passphrase required: --current-pass <phrase>' }));
-      process.exit(1);
-    }
-  }
-
-  delete account.passHash;
-  await writeAccountStore(store);
-  console.log(JSON.stringify({ ok: true, email: account.email, passProtected: false }));
-}
-
 // ─── auth pass-add ─────────────────────────────────────────
 
 export async function authPassAdd(argv: string[]): Promise<void> {
@@ -433,11 +350,11 @@ export async function authPassList(argv: string[]): Promise<void> {
 
   const passes: Array<{ index: number; type: string; calendarDeny?: string[] }> = [];
   if (account.passHash) {
-    passes.push({ index: 0, type: 'legacy' });
+    passes.push({ index: 0, type: 'legacy', calendarDeny: [] });
   }
   for (const [i, p] of (account.passes ?? []).entries()) {
     passes.push({
-      index: account.passHash ? i + 1 : i,
+      index: i,
       type: 'pass-add',
       ...(p.calendarDeny?.length ? { calendarDeny: p.calendarDeny } : {}),
     });
@@ -497,8 +414,12 @@ async function calendarDenyAdd(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  // Ensure the pass is in passes[] (not just legacy passHash) so it can carry a deny list.
-  addPassEntry(account, phrase);
+  // Deny lists require a passes[] entry — passHash-only passphrases cannot carry restrictions.
+  const h = hashPass(phrase);
+  if (!account.passes?.some((p) => p.hash === h)) {
+    console.log(JSON.stringify({ error: 'AUTH_PASS_WRONG', message: 'This passphrase is a legacy passHash entry and cannot carry calendar restrictions. Run "go-easy auth pass-add <email> <phrase>" to register it as a per-pass entry first.' }));
+    process.exit(1);
+  }
 
   const ok = addCalendarDeny(account, phrase, calendarId);
   if (!ok) {

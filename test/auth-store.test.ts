@@ -433,6 +433,17 @@ describe('findPassEntry', () => {
     expect(findPassEntry(account, 'legacy')!.calendarDeny).toBeUndefined();
   });
 
+  it('passHash takes precedence over same-hash passes[] entry with calendarDeny', () => {
+    // If passHash and a passes[] entry share the same hash, passHash wins — no restrictions.
+    const account = makePassAccount({
+      passHash: hashPass('admin'),
+      passes: [{ hash: hashPass('admin'), calendarDeny: ['cal1'] }],
+    });
+    const entry = findPassEntry(account, 'admin');
+    expect(entry).not.toBeNull();
+    expect(entry!.calendarDeny).toBeUndefined();
+  });
+
   it('returns null for wrong passphrase', () => {
     const account = makePassAccount({ passes: [{ hash: hashPass('right') }] });
     expect(findPassEntry(account, 'wrong')).toBeNull();

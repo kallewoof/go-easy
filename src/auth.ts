@@ -150,7 +150,7 @@ export async function listAllAccounts(passes: string[] = []): Promise<
         email: a.email,
         scopes: a.tokens.combined.scopes,
         source: 'combined',
-        passProtected: !!a.passHash,
+        passProtected: !!(a.passHash || a.passes?.length),
       };
     }
     // Collect scopes from per-service tokens
@@ -163,7 +163,7 @@ export async function listAllAccounts(passes: string[] = []): Promise<
       email: a.email,
       scopes,
       source: 'legacy',
-      passProtected: !!a.passHash,
+      passProtected: !!(a.passHash || a.passes?.length),
     };
   });
 }

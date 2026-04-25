@@ -317,17 +317,17 @@ export function filterAccountsByPass(store: AccountStore, passes: string[]): Acc
 
 /**
  * Find the PassEntry for a given plaintext passphrase.
- * Checks passes[] first, then falls back to the legacy passHash field.
+ * Checks passHash first (takes precedence — unconditional access, no calendar restrictions),
+ * then falls back to passes[].
  * Returns null if no match is found.
  *
- * For a legacy passHash match, returns { hash } with no calendarDeny (no restrictions).
+ * passHash always wins over a same-hash passes[] entry so that a legacy admin pass
+ * can never be accidentally restricted by a calendarDeny migration.
  */
 export function findPassEntry(account: GoEasyAccount, pass: string): PassEntry | null {
   const h = hashPass(pass);
-  const entry = account.passes?.find((p) => p.hash === h);
-  if (entry) return entry;
   if (account.passHash === h) return { hash: h };
-  return null;
+  return account.passes?.find((p) => p.hash === h) ?? null;
 }
 
 /**
