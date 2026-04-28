@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseFlags, positional, main } from '../../src/bin/drive.js';
 import * as driveModule from '../../src/drive/index.js';
+import * as authModule from '../../src/auth.js';
 import { setSafetyContext } from '../../src/safety.js';
 
 vi.mock('node:fs/promises', () => ({ writeFile: vi.fn().mockResolvedValue(undefined) }));
@@ -35,6 +36,14 @@ describe('parseFlags', () => {
   it('sets bare flags to "true"', () => {
     expect(parseFlags(['--confirm'])).toEqual({ confirm: 'true' });
   });
+
+  it('parses --key value (space-separated) pairs', () => {
+    expect(parseFlags(['--pass', 'secret', '--max', '5'])).toEqual({ pass: 'secret', max: '5' });
+  });
+
+  it('does not consume next arg as value when followed by another flag', () => {
+    expect(parseFlags(['--confirm', '--pass', 'secret'])).toEqual({ confirm: 'true', pass: 'secret' });
+  });
 });
 
 describe('positional', () => {
@@ -44,6 +53,10 @@ describe('positional', () => {
 
   it('returns empty array when all args are flags', () => {
     expect(positional(['--confirm', '--max=10'])).toEqual([]);
+  });
+
+  it('excludes values consumed by --key value pairs', () => {
+    expect(positional(['file-id', '--pass', 'secret'])).toEqual(['file-id']);
   });
 });
 
@@ -67,6 +80,11 @@ describe('main()', () => {
     expect(vi.mocked(driveModule.listFiles)).toHaveBeenCalledWith(
       'fake-auth', expect.objectContaining({ maxResults: 5 }),
     );
+  });
+
+  it('--pass value passes the actual passphrase to getAuth, not "true"', async () => {
+    await main([ACC, 'ls', '--pass', 'mysecret']);
+    expect(vi.mocked(authModule.getAuth)).toHaveBeenCalledWith('drive', ACC, 'mysecret');
   });
 
   it('ls with folder — passes folderId', async () => {

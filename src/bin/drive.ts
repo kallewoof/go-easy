@@ -47,21 +47,34 @@ function usage(): never {
   process.exit(1);
 }
 
-/** Parse --key=value flags from args */
+/** Parse --key=value and --key value flags from args */
 export function parseFlags(args: string[]): Record<string, string> {
   const flags: Record<string, string> = {};
-  for (const arg of args) {
-    const match = arg.match(/^--([^=]+)(?:=(.*))?$/);
-    if (match) {
-      flags[match[1]] = match[2] ?? 'true';
+  for (let i = 0; i < args.length; i++) {
+    const match = args[i].match(/^--([^=]+)(?:=(.*))?$/);
+    if (!match) continue;
+    if (match[2] !== undefined) {
+      flags[match[1]] = match[2];
+    } else if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      flags[match[1]] = args[++i];
+    } else {
+      flags[match[1]] = 'true';
     }
   }
   return flags;
 }
 
-/** Get positional args (non-flag) */
+/** Get positional args (non-flag), skipping values consumed by --key value pairs */
 export function positional(args: string[]): string[] {
-  return args.filter((a) => !a.startsWith('--'));
+  const consumed = new Set<number>();
+  for (let i = 0; i < args.length; i++) {
+    const match = args[i].match(/^--([^=]+)(?:=(.*))?$/);
+    if (!match) continue;
+    if (match[2] === undefined && i + 1 < args.length && !args[i + 1].startsWith('--')) {
+      consumed.add(++i);
+    }
+  }
+  return args.filter((a, i) => !a.startsWith('--') && !consumed.has(i));
 }
 
 export async function main(args: string[] = process.argv.slice(2)) {
