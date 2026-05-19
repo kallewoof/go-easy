@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseFlags, positional, buildSpecialEventFlags, assertKnownFlags, VALID_FLAGS, parseReminderFlag, main } from '../../src/bin/calendar.js';
+import { parseFlags, positional, buildSpecialEventFlags, assertKnownFlags, VALID_FLAGS, parseReminderFlag, main, CALENDAR_COMMANDS } from '../../src/bin/calendar.js';
 import * as calendarModule from '../../src/calendar/index.js';
 import { setSafetyContext } from '../../src/safety.js';
 import { getAuth, getCalendarDenyList } from '../../src/auth.js';
@@ -559,5 +559,33 @@ describe('deny-list enforcement', () => {
   it('--pass is forwarded to getCalendarDenyList', async () => {
     await main([ACC, 'calendars', '--pass=agent-secret']);
     expect(vi.mocked(getCalendarDenyList)).toHaveBeenCalledWith(ACC, 'agent-secret');
+  });
+
+  // The validation list (CALENDAR_COMMANDS) and the usage() command list must
+  // stay in sync — when someone adds a new case to the switch they must also
+  // update both. Comparing them here makes the drift loud.
+  it('usage() command list matches CALENDAR_COMMANDS', async () => {
+    await expect(main([])).rejects.toThrow('exit');
+    const usageOut = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(usageOut.error).toBe('USAGE');
+    // Usage docs include variants like 'create (ooo)' — strip the parenthetical
+    // suffix and dedupe to get the base command set.
+    const usageCommands = new Set(
+      Object.keys(usageOut.commands).map((k) => k.split(' ')[0]),
+    );
+    expect([...usageCommands].sort()).toEqual([...CALENDAR_COMMANDS].sort());
+  });
+
+  it('rejects non-email account with INVALID_SYNTAX', async () => {
+    await expect(main(['list', 'calendars'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('INVALID_SYNTAX');
+  });
+
+  it('rejects unknown command with UNKNOWN_COMMAND', async () => {
+    await expect(main([ACC, 'list'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('UNKNOWN_COMMAND');
+    expect(err.message).toContain('calendars');
   });
 });

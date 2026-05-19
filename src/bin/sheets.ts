@@ -19,6 +19,9 @@ import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as sheetsLib from '../sheets/index.js';
 import type { GetValuesOptions } from '../sheets/types.js';
+import { assertAccountIsEmail, assertKnownCommand } from './cli-validation.js';
+
+export const SHEETS_COMMANDS = ['tabs', 'read', 'write', 'clear'] as const;
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -59,6 +62,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const rest = args.slice(2);
   const flags = parseFlags(rest);
   const pos = positional(rest);
+
+  assertAccountIsEmail(account, 'go-sheets');
+  assertKnownCommand(command, SHEETS_COMMANDS, 'go-sheets');
 
   const hasConfirm = 'confirm' in flags;
   setSafetyContext({

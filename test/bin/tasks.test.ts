@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseFlags, positional, main } from '../../src/bin/tasks.js';
+import { parseFlags, positional, main, TASKS_COMMANDS } from '../../src/bin/tasks.js';
 import * as tasksModule from '../../src/tasks/index.js';
 import { getAuth } from '../../src/auth.js';
 import { setSafetyContext } from '../../src/safety.js';
@@ -175,5 +175,25 @@ describe('main()', () => {
     await expect(main([ACC, 'lists'])).rejects.toThrow('exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('usage() command list matches TASKS_COMMANDS', async () => {
+    await expect(main([])).rejects.toThrow('exit');
+    const usageOut = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(usageOut.error).toBe('USAGE');
+    expect(Object.keys(usageOut.commands).sort()).toEqual([...TASKS_COMMANDS].sort());
+  });
+
+  it('rejects non-email account with INVALID_SYNTAX', async () => {
+    await expect(main(['list', 'lists'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('INVALID_SYNTAX');
+  });
+
+  it('rejects unknown command with UNKNOWN_COMMAND', async () => {
+    await expect(main([ACC, 'list'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('UNKNOWN_COMMAND');
+    expect(err.message).toContain('lists');
   });
 });

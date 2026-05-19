@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { parseFlags, positional, main } from '../../src/bin/sheets.js';
+import { parseFlags, positional, main, SHEETS_COMMANDS } from '../../src/bin/sheets.js';
 import * as sheetsModule from '../../src/sheets/index.js';
 import { setSafetyContext } from '../../src/safety.js';
 
@@ -129,5 +129,25 @@ describe('main()', () => {
     await main([ACC, 'tabs', SHEET_ID, '--confirm']);
     const ctx = vi.mocked(setSafetyContext).mock.calls[0][0];
     expect(await ctx.confirm({ name: 'op', description: 'op', details: {} })).toBe(true);
+  });
+
+  it('usage() command list matches SHEETS_COMMANDS', async () => {
+    await expect(main([])).rejects.toThrow('exit');
+    const usageOut = JSON.parse(logSpy.mock.calls[0][0]);
+    expect(usageOut.error).toBe('USAGE');
+    expect(Object.keys(usageOut.commands).sort()).toEqual([...SHEETS_COMMANDS].sort());
+  });
+
+  it('rejects non-email account with INVALID_SYNTAX', async () => {
+    await expect(main(['tabs', 'read'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('INVALID_SYNTAX');
+  });
+
+  it('rejects unknown command with UNKNOWN_COMMAND', async () => {
+    await expect(main([ACC, 'list'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('UNKNOWN_COMMAND');
+    expect(err.message).toContain('tabs');
   });
 });

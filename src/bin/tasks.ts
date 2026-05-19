@@ -19,6 +19,12 @@ import { realpathSync } from 'node:fs';
 import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as tasks from '../tasks/index.js';
+import { assertAccountIsEmail, assertKnownCommand } from './cli-validation.js';
+
+export const TASKS_COMMANDS = [
+  'lists', 'tasks', 'get', 'add', 'update', 'complete', 'move', 'delete',
+  'create-list', 'delete-list', 'clear',
+] as const;
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -66,6 +72,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const rest = args.slice(2);
   const flags = parseFlags(rest);
   const pos = positional(rest);
+
+  assertAccountIsEmail(account, 'go-tasks');
+  assertKnownCommand(command, TASKS_COMMANDS, 'go-tasks');
 
   // Set up safety context
   const hasConfirm = 'confirm' in flags;

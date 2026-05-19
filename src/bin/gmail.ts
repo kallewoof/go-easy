@@ -29,6 +29,12 @@ import { setSafetyContext } from '../safety.js';
 import * as gmail from '../gmail/index.js';
 import { cacheMessages, getCachedMessage, queryCache } from '../gmail/cache.js';
 import { parseFlags, readBodyFlags } from './gmail-flags.js';
+import { assertAccountIsEmail, assertKnownCommand } from './cli-validation.js';
+
+export const GMAIL_COMMANDS = [
+  'profile', 'search', 'query', 'get', 'thread', 'labels', 'send', 'reply',
+  'forward', 'draft', 'send-draft', 'drafts', 'batch-label', 'attachment',
+] as const;
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -172,6 +178,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const rest = args.slice(2);
   const flags = parseFlags(rest);
   const pos = positional(rest);
+
+  assertAccountIsEmail(account, 'go-gmail');
+  assertKnownCommand(command, GMAIL_COMMANDS, 'go-gmail');
 
   // Set up safety context: --confirm flag allows destructive ops
   const hasConfirm = 'confirm' in flags;

@@ -20,6 +20,9 @@ import { getAuth, getCalendarDenyList } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import { AccessDeniedError } from '../errors.js';
 import * as calendar from '../calendar/index.js';
+import { assertAccountIsEmail, assertKnownCommand } from './cli-validation.js';
+
+export const CALENDAR_COMMANDS = ['calendars', 'events', 'event', 'create', 'update', 'delete', 'freebusy'] as const;
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -170,6 +173,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const rest = args.slice(2);
   const flags = parseFlags(rest);
   const pos = positional(rest);
+
+  assertAccountIsEmail(account, 'go-calendar');
+  assertKnownCommand(command, CALENDAR_COMMANDS, 'go-calendar');
 
   // Set up safety context: --confirm flag allows destructive ops
   const hasConfirm = 'confirm' in flags;

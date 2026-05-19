@@ -22,6 +22,12 @@ import { getAuth } from '../auth.js';
 import { setSafetyContext } from '../safety.js';
 import * as drive from '../drive/index.js';
 import type { ShareOptions } from '../drive/types.js';
+import { assertAccountIsEmail, assertKnownCommand } from './cli-validation.js';
+
+export const DRIVE_COMMANDS = [
+  'ls', 'search', 'get', 'download', 'export', 'upload', 'mkdir', 'move',
+  'rename', 'copy', 'trash', 'permissions', 'share', 'unshare',
+] as const;
 
 function usage(): never {
   console.log(JSON.stringify({
@@ -85,6 +91,9 @@ export async function main(args: string[] = process.argv.slice(2)) {
   const rest = args.slice(2);
   const flags = parseFlags(rest);
   const pos = positional(rest);
+
+  assertAccountIsEmail(account, 'go-drive');
+  assertKnownCommand(command, DRIVE_COMMANDS, 'go-drive');
 
   // Set up safety context: --confirm flag allows destructive ops
   const hasConfirm = 'confirm' in flags;
