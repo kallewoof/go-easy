@@ -49,18 +49,19 @@ npx go-calendar <account> events primary --event-types=default,outOfOffice
 npx go-calendar <account> events primary,work@group.calendar.google.com \
   --from=2026-04-01T00:00:00Z --max=50
 
-# All calendars — '*' expands to every calendar in the account (including shared ones)
-# (Note: '*' must be quoted. Typing * will resolve to the files in CWD.)
-npx go-calendar <account> events '*' --from=2026-04-01T00:00:00Z --max=50
+# All calendars — 'all' expands to every calendar in the account (including shared ones)
+# Use 'all' rather than '*': bare * gets expanded by the shell to local filenames.
+# ('*' is also accepted, but only if quoted.)
+npx go-calendar <account> events all --from=2026-04-01T00:00:00Z --max=50
 
 # Own calendars only — 'own' expands to calendars with accessRole=owner
 # Use this for work accounts with many shared coworker calendars
-npx go-calendar <account> events 'own' --from=2026-04-01T00:00:00Z --max=50
+npx go-calendar <account> events own --from=2026-04-01T00:00:00Z --max=50
 ```
 Returns: `{ items: CalendarEvent[], nextPageToken? }`
 
 Note: `nextPageToken` is only present for single-calendar calls. For multi-calendar merges
-(including `*`) there is no pagination token — increase `--max` or narrow the date range instead.
+(including `all`) there is no pagination token — increase `--max` or narrow the date range instead.
 
 **Defaults:**
 - `--max`: 20 per page

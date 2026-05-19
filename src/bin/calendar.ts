@@ -30,7 +30,7 @@ function usage(): never {
     message: 'go-calendar <account> <command> [args...]',
     commands: {
       calendars: 'go-calendar <account> calendars',
-      events: 'go-calendar <account> events <calendarId|id1,id2|*|own> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]',
+      events: 'go-calendar <account> events <calendarId|id1,id2|all|own> [--from=<dt>] [--to=<dt>] [--max=N] [--query="..."] [--event-types=default,outOfOffice,workingLocation,focusTime,birthday]   (use \'all\' for every calendar; \'*\' works only if quoted, since the shell expands an unquoted *)',
       event: 'go-calendar <account> event <calendarId> <eventId>',
       create: 'go-calendar <account> create <calendarId> --summary="..." --start=<dt> --end=<dt> [--description="..."] [--location="..."] [--attendees=a@b,c@d] [--all-day] [--tz=<tz>] [--type=outOfOffice|workingLocation|focusTime] [--recurrence=RRULE:FREQ=WEEKLY;BYDAY=MO] [--reminder=120|120:popup|120:email,30:popup|default|none]',
       'create (ooo)': 'go-calendar <account> create <calendarId> --type=outOfOffice --summary="..." --start=<dt> --end=<dt> [--auto-decline=declineAllConflictingInvitations] [--decline-message="..."]',
@@ -210,7 +210,20 @@ export async function main(args: string[] = process.argv.slice(2)) {
 
       case 'events': {
         if (!pos[0]) usage();
-        const wildcard = pos[0] === '*';
+        if (pos.length > 1) {
+          // Calendar IDs must be comma-separated, never space-separated. The
+          // common cause for extra positionals here is an unquoted `*` that
+          // the shell expanded to local filenames before invocation.
+          const preview = pos.slice(0, 3).map((p) => JSON.stringify(p)).join(', ');
+          const more = pos.length > 3 ? `, ... (${pos.length} total)` : '';
+          throw Object.assign(
+            new Error(
+              `'events' takes one positional argument: a calendar ID, comma-separated IDs (no spaces), 'all', or 'own'. Got ${pos.length}: ${preview}${more}. If you typed '*' for "all calendars", your shell expanded it to local files — use 'all' instead, or quote it as '*'.`,
+            ),
+            { code: 'INVALID_SYNTAX' },
+          );
+        }
+        const wildcard = pos[0] === '*' || pos[0] === 'all';
         const ownOnly = pos[0] === 'own';
         const calIds = (wildcard || ownOnly)
           ? (await calendar.listCalendars(auth))

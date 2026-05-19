@@ -235,6 +235,27 @@ describe('main()', () => {
     expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'work@group.calendar.google.com', expect.any(Object));
   });
 
+  it('events all — equivalent to events *', async () => {
+    vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
+      { id: 'primary', summary: 'My Calendar' },
+      { id: 'work@group.calendar.google.com', summary: 'Work' },
+    ]);
+    await main([ACC, 'events', 'all', '--from=2026-01-01']);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'primary', expect.any(Object));
+    expect(vi.mocked(calendarModule.listEvents)).toHaveBeenCalledWith('fake-auth', 'work@group.calendar.google.com', expect.any(Object));
+  });
+
+  it('events — multiple positional args (likely shell-expanded *) errors with INVALID_SYNTAX', async () => {
+    // Simulates `events *` where the shell expanded * into local files.
+    await expect(main([ACC, 'events', 'package.json', 'README.md', 'src'])).rejects.toThrow('exit');
+    const err = JSON.parse(errSpy.mock.calls[0][0]);
+    expect(err.error).toBe('INVALID_SYNTAX');
+    expect(err.message).toContain("'all'");
+    expect(err.message).toContain('shell expanded');
+    expect(vi.mocked(calendarModule.listEvents)).not.toHaveBeenCalled();
+  });
+
   it('events * — skips calendars that return errors (e.g. holiday feeds)', async () => {
     vi.mocked(calendarModule.listCalendars).mockResolvedValueOnce([
       { id: 'primary', summary: 'My Calendar' },
