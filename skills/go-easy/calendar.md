@@ -50,6 +50,7 @@ npx go-calendar <account> events primary,work@group.calendar.google.com \
   --from=2026-04-01T00:00:00Z --max=50
 
 # All calendars — '*' expands to every calendar in the account (including shared ones)
+# (Note: '*' must be quoted. Typing * will resolve to the files in CWD.)
 npx go-calendar <account> events '*' --from=2026-04-01T00:00:00Z --max=50
 
 # Own calendars only — 'own' expands to calendars with accessRole=owner

@@ -64,10 +64,10 @@ interface PendingSession {
  * - Completed session → return result, clean up
  * - Stale session (dead pid) → clean up, restart
  */
-export async function authAdd(email: string, credentialsSelector?: string): Promise<AuthFlowStatus> {
+export async function authAdd(email: string, credentialsSelector?: string, force = false): Promise<AuthFlowStatus> {
   // Check if already fully configured
   const store = await readAccountStore();
-  if (store) {
+  if (!force && store) {
     const account = findAccount(store, email);
     if (account?.tokens.combined) {
       const hasAll = ALL_SCOPES.every((s) =>

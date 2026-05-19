@@ -44,7 +44,7 @@ export function usage(): never {
       message: 'go-easy <command> [args...]',
       commands: {
         'auth list [--pass <phrase>]': 'List accounts visible with the given passphrase (unprotected accounts always shown)',
-        'auth add <email> [--credentials <name|index>]': 'Add or upgrade an account (starts auth flow)',
+        'auth add <email> [--credentials <name|index>] [--force]': 'Add or upgrade an account (starts auth flow); --force re-authenticates even if a token already exists',
         'auth remove <email> --confirm': 'Remove an account',
         'auth pass-add <email> <new-passphrase> [--current-pass <phrase>]': 'Add a passphrase to an account (multiple passes allowed; --current-pass required if any pass already exists)',
         'auth pass-rm <email> <passphrase> [--current-pass <phrase>]': 'Remove a specific passphrase from an account',
@@ -173,7 +173,8 @@ export async function authAdd(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const result = await authAddFlow(email, credentialsSelector);
+  const force = flags.force === 'true';
+  const result = await authAddFlow(email, credentialsSelector, force);
   console.log(JSON.stringify(result, null, 2));
 }
 
